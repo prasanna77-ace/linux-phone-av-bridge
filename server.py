@@ -1,15 +1,36 @@
-import ssl, asyncio, socket, subprocess, os, fractions, cv2
-from aiohttp import web
+import ssl, asyncio, socket, subprocess, os, fractions, cv2, json, io, time, platform
+from concurrent.futures import ThreadPoolExecutor
+from aiohttp import web, WSMsgType
 from aiortc import RTCPeerConnection, RTCSessionDescription, RTCConfiguration, AudioStreamTrack
 import pyvirtualcam
 import numpy as np
 import av
 import qrcode
+import pyperclip
+from pynput.mouse import Controller as MouseController, Button
+from pynput.keyboard import Controller as KeyboardController, Key
 
+IS_WINDOWS = platform.system() == "Windows"
+
+if not IS_WINDOWS:
+    os.environ.setdefault("DISPLAY", ":0")
+
+try:
+    mouse = MouseController()
+    keyboard = KeyboardController()
+except Exception:
+    mouse, keyboard = None, None
+
+executor = ThreadPoolExecutor(max_workers=2)
 pcs = set()
 vcam = None
 vcam_lock = asyncio.Lock()
 active_tasks = set()
+ws_clients = set()
+mobile_telemetry = {"battery": "100%", "charging": False, "device": "Mobile"}
+
+TRANSFER_DIR = os.path.expanduser("~/Downloads/PhoneBridge_Transfers")
+os.makedirs(TRANSFER_DIR, exist_ok=True)
 
 def get_lan_ip():
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -30,11 +51,23 @@ LAN_IP = get_lan_ip()
 MOBILE_URL = f"https://{LAN_IP}:8443/phone"
 DASHBOARD_URL = f"https://{LAN_IP}:8443/"
 
-def make_standby_frame(w=1280, h=720, text="PhoneWebcam (Active)"):
+def get_sys_clipboard():
+    try:
+        return pyperclip.paste()
+    except Exception:
+        return ""
+
+def set_sys_clipboard(text):
+    try:
+        pyperclip.copy(text)
+    except Exception:
+        pass
+
+def make_standby_frame(w=1280, h=720, text="PhoneWebcam (Standby)"):
     img = np.zeros((h, w, 3), dtype=np.uint8)
     img[:] = (15, 23, 42)
-    cv2.putText(img, text, (int(w*0.28), int(h*0.48)), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (56, 189, 248), 2, cv2.LINE_AA)
-    cv2.putText(img, "Standby: Connect phone to stream video", (int(w*0.27), int(h*0.56)), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (148, 163, 184), 1, cv2.LINE_AA)
+    cv2.putText(img, text, (int(w*0.25), int(h*0.48)), cv2.FONT_HERSHEY_SIMPLEX, 1.1, (56, 189, 248), 2, cv2.LINE_AA)
+    cv2.putText(img, "Ready for connection via WebRTC", (int(w*0.28), int(h*0.56)), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (148, 163, 184), 1, cv2.LINE_AA)
     return img
 
 class NonBlockingDesktopAudio(AudioStreamTrack):
@@ -47,31 +80,51 @@ class NonBlockingDesktopAudio(AudioStreamTrack):
         self._pts = 0
         self.proc = None
         self.reader = None
+        self.pyaudio_stream = None
 
     async def init_process(self):
-        cmd = [
-            "parec",
-            "--format=s16le",
-            "--rate=48000",
-            "--channels=2",
-            "--raw",
-            "--latency-msec=10",
-            "--process-time-msec=5",
-            "-d", "@DEFAULT_MONITOR@"
-        ]
-        self.proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.DEVNULL
-        )
-        self.reader = self.proc.stdout
+        if not IS_WINDOWS:
+            cmd = [
+                "parec", "--format=s16le", "--rate=48000", "--channels=2",
+                "--raw", "--latency-msec=10", "--process-time-msec=5", "-d", "@DEFAULT_MONITOR@"
+            ]
+            self.proc = await asyncio.create_subprocess_exec(
+                *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL
+            )
+            self.reader = self.proc.stdout
+        else:
+            try:
+                import pyaudiowpatch as pyaudio
+                p = pyaudio.PyAudio()
+                wasapi_info = p.get_host_api_info_by_type(pyaudio.paWASAPI)
+                default_speakers = p.get_device_info_by_index(wasapi_info["defaultOutputDevice"])
+                if not default_speakers["isLoopbackDevice"]:
+                    for loopback in p.get_loopback_device_info_generator():
+                        if default_speakers["name"] in loopback["name"]:
+                            default_speakers = loopback
+                            break
+                self.pyaudio_stream = p.open(
+                    format=pyaudio.paInt16,
+                    channels=2,
+                    rate=48000,
+                    input=True,
+                    input_device_index=default_speakers["index"],
+                    frames_per_buffer=self.samples_per_frame
+                )
+            except Exception as e:
+                print(f"[Windows Audio Warning] WASAPI Loopback init: {e}")
 
     async def recv(self):
-        if self.proc is None:
+        if self.proc is None and self.pyaudio_stream is None:
             await self.init_process()
 
+        raw_data = b'\x00' * self.bytes_per_frame
         try:
-            raw_data = await self.reader.readexactly(self.bytes_per_frame)
+            if not IS_WINDOWS and self.reader:
+                raw_data = await self.reader.readexactly(self.bytes_per_frame)
+            elif IS_WINDOWS and self.pyaudio_stream:
+                loop = asyncio.get_event_loop()
+                raw_data = await loop.run_in_executor(executor, self.pyaudio_stream.read, self.samples_per_frame, False)
         except Exception:
             raw_data = b'\x00' * self.bytes_per_frame
 
@@ -86,10 +139,13 @@ class NonBlockingDesktopAudio(AudioStreamTrack):
     def stop(self):
         super().stop()
         if self.proc:
+            try: self.proc.terminate()
+            except Exception: pass
+        if self.pyaudio_stream:
             try:
-                self.proc.terminate()
-            except Exception:
-                pass
+                self.pyaudio_stream.stop_stream()
+                self.pyaudio_stream.close()
+            except Exception: pass
 
 async def handle_dashboard(request):
     return web.FileResponse('./static/dashboard.html')
@@ -97,20 +153,134 @@ async def handle_dashboard(request):
 async def handle_phone(request):
     return web.FileResponse('./static/phone.html')
 
+async def get_qr(request):
+    qr = qrcode.QRCode(box_size=8, border=2)
+    qr.add_data(MOBILE_URL)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="#38bdf8", back_color="#0f172a")
+    buf = io.BytesIO()
+    img.save(buf, format='PNG')
+    return web.Response(body=buf.getvalue(), content_type='image/png')
+
 async def get_status(request):
+    files = os.listdir(TRANSFER_DIR)
     return web.json_response({
         "lan_ip": LAN_IP,
         "mobile_url": MOBILE_URL,
-        "active_connections": len(pcs),
-        "video_device": "/dev/video10",
-        "audio_sink": "Phone_Microphone",
-        "monitor_source": "@DEFAULT_MONITOR@"
+        "active_connections": len(pcs) + len(ws_clients),
+        "files_count": len(files),
+        "save_path": TRANSFER_DIR,
+        "telemetry": mobile_telemetry,
+        "clipboard": get_sys_clipboard(),
+        "platform": platform.system()
     })
+
+async def websocket_input_handler(request):
+    global mobile_telemetry
+    ws = web.WebSocketResponse()
+    await ws.prepare(request)
+    ws_clients.add(ws)
+
+    try:
+        async for msg in ws:
+            if msg.type == WSMsgType.TEXT:
+                data = json.loads(msg.data)
+                act = data.get("a")
+
+                if act == "mm" and mouse:
+                    sens = data.get("sens", 1.5)
+                    mouse.move(data.get("dx", 0) * sens, data.get("dy", 0) * sens)
+                elif act == "gyro" and mouse:
+                    dx = data.get("gx", 0) * data.get("sens", 2.2)
+                    dy = data.get("gy", 0) * data.get("sens", 2.2)
+                    mouse.move(dx, dy)
+                elif act == "c" and mouse:
+                    btn = Button.left if data.get("b") == "l" else (Button.right if data.get("b") == "r" else Button.middle)
+                    mouse.click(btn)
+                elif act == "sc" and mouse:
+                    mouse.scroll(0, data.get("dy", 0))
+
+                elif act == "t" and keyboard:
+                    keyboard.type(data.get("txt", ""))
+                elif act == "k" and keyboard:
+                    k = data.get("k")
+                    key_map = {
+                        "Backspace": Key.backspace, "Enter": Key.enter, "Space": Key.space,
+                        "Tab": Key.tab, "Escape": Key.esc, "Up": Key.up, "Down": Key.down,
+                        "Left": Key.left, "Right": Key.right
+                    }
+                    if k in key_map:
+                        keyboard.press(key_map[k])
+                        keyboard.release(key_map[k])
+
+                elif act == "macro":
+                    m = data.get("cmd")
+                    if m == "play_pause": keyboard.press(Key.media_play_pause); keyboard.release(Key.media_play_pause)
+                    elif m == "next": keyboard.press(Key.media_next); keyboard.release(Key.media_next)
+                    elif m == "prev": keyboard.press(Key.media_previous); keyboard.release(Key.media_previous)
+                    elif m == "vol_up": keyboard.press(Key.media_volume_up); keyboard.release(Key.media_volume_up)
+                    elif m == "vol_down": keyboard.press(Key.media_volume_down); keyboard.release(Key.media_volume_down)
+                    elif m == "mute": keyboard.press(Key.media_volume_mute); keyboard.release(Key.media_volume_mute)
+                    elif m == "lock":
+                        if IS_WINDOWS: subprocess.Popen("rundll32.exe user32.dll,LockWorkStation", shell=True)
+                        else: subprocess.Popen("loginctl lock-session 2>/dev/null || xflock4 2>/dev/null || true", shell=True)
+                    elif m == "screenshot":
+                        from PIL import ImageGrab
+                        ss = ImageGrab.grab()
+                        ss.save(os.path.join(TRANSFER_DIR, f"screenshot_{int(time.time())}.png"))
+                    elif m == "terminal":
+                        if IS_WINDOWS: subprocess.Popen("start cmd.exe", shell=True)
+                        else: subprocess.Popen("x-terminal-emulator 2>/dev/null || true", shell=True)
+
+                elif act == "set_clip":
+                    set_sys_clipboard(data.get("text", ""))
+                elif act == "get_clip":
+                    await ws.send_json({"a": "clip_data", "text": get_sys_clipboard()})
+
+                elif act == "telemetry":
+                    mobile_telemetry = {
+                        "battery": f"{data.get('battery', 100)}%",
+                        "charging": data.get("charging", False),
+                        "device": data.get("device", "Mobile")
+                    }
+    finally:
+        ws_clients.discard(ws)
+    return ws
+
+async def upload_file(request):
+    reader = await request.multipart()
+    while True:
+        part = await reader.next()
+        if part is None: break
+        if part.filename:
+            safe_name = os.path.basename(part.filename)
+            filepath = os.path.abspath(os.path.join(TRANSFER_DIR, safe_name))
+            if not filepath.startswith(os.path.abspath(TRANSFER_DIR)): continue
+            with open(filepath, 'wb', buffering=4*1024*1024) as f:
+                while True:
+                    chunk = await part.read_chunk(size=1024*1024)
+                    if not chunk: break
+                    f.write(chunk)
+    return web.json_response({"status": "uploaded", "dir": TRANSFER_DIR})
+
+async def list_files(request):
+    files = [{"name": f, "size": os.path.getsize(os.path.join(TRANSFER_DIR, f))} for f in os.listdir(TRANSFER_DIR)]
+    return web.json_response(files)
+
+async def download_file(request):
+    safe_name = os.path.basename(request.match_info.get('filename', ''))
+    filepath = os.path.abspath(os.path.join(TRANSFER_DIR, safe_name))
+    if filepath.startswith(os.path.abspath(TRANSFER_DIR)) and os.path.exists(filepath):
+        return web.FileResponse(filepath)
+    return web.Response(status=404)
 
 async def offer(request):
     params = await request.json()
     offer = RTCSessionDescription(sdp=params["sdp"], type=params["type"])
-    enable_pc_to_phone = params.get("enable_pc_to_phone", True)
+    enable_pc_to_phone = params.get("enable_pc_to_phone", False)
+    target_w = int(params.get("width", 1280))
+    target_h = int(params.get("height", 720))
+    target_fps = int(params.get("fps", 30))
 
     pc = RTCPeerConnection(configuration=RTCConfiguration(iceServers=[]))
     pcs.add(pc)
@@ -123,7 +293,7 @@ async def offer(request):
     @pc.on("track")
     def on_track(track):
         if track.kind == "video":
-            task = asyncio.create_task(handle_video(track, pc))
+            task = asyncio.create_task(handle_video(track, pc, target_w, target_h, target_fps))
             active_tasks.add(task)
             task.add_done_callback(active_tasks.discard)
         elif track.kind == "audio":
@@ -134,89 +304,106 @@ async def offer(request):
     @pc.on("connectionstatechange")
     async def on_state_change():
         if pc.connectionState in ["failed", "closed"]:
-            if audio_track:
-                audio_track.stop()
+            if audio_track: audio_track.stop()
             await pc.close()
             pcs.discard(pc)
             async with vcam_lock:
-                if vcam:
-                    vcam.send(make_standby_frame())
+                if vcam: vcam.send(make_standby_frame())
 
     await pc.setRemoteDescription(offer)
     answer = await pc.createAnswer()
     await pc.setLocalDescription(answer)
 
     for _ in range(20):
-        if pc.iceGatheringState == "complete":
-            break
+        if pc.iceGatheringState == "complete": break
         await asyncio.sleep(0.05)
 
     return web.json_response({"sdp": pc.localDescription.sdp, "type": pc.localDescription.type})
 
-async def handle_video(track, pc):
+def process_frame(frame, w_target, h_target):
+    img = frame.to_ndarray(format="bgr24")
+    h, w, _ = img.shape
+    if w != w_target or h != h_target:
+        img = cv2.resize(img, (w_target, h_target), interpolation=cv2.INTER_LINEAR)
+    return img
+
+async def handle_video(track, pc, w_target, h_target, fps_target):
     global vcam
-    TARGET_W, TARGET_H = 1280, 720
+    loop = asyncio.get_event_loop()
+    async with vcam_lock:
+        if vcam is None or vcam.width != w_target or vcam.height != h_target:
+            if vcam is not None: vcam.close()
+            try:
+                if IS_WINDOWS:
+                    vcam = pyvirtualcam.Camera(width=w_target, height=h_target, fps=fps_target, backend='obs', fmt=pyvirtualcam.PixelFormat.BGR)
+                else:
+                    vcam = pyvirtualcam.Camera(width=w_target, height=h_target, fps=fps_target, device='/dev/video10', fmt=pyvirtualcam.PixelFormat.BGR)
+            except Exception as e:
+                print(f"[VirtualCam Notice] {e}")
+
     while pc.connectionState not in ["failed", "closed"]:
         try:
             frame = await track.recv()
-            img = frame.to_ndarray(format="bgr24")
-            h, w, _ = img.shape
-
-            if w != TARGET_W or h != TARGET_H:
-                img = cv2.resize(img, (TARGET_W, TARGET_H), interpolation=cv2.INTER_LINEAR)
-
+            img = await loop.run_in_executor(executor, process_frame, frame, w_target, h_target)
             async with vcam_lock:
-                if vcam is not None:
-                    vcam.send(img)
-        except Exception:
-            break
+                if vcam is not None: vcam.send(img)
+        except Exception: break
 
 async def handle_mic(track, pc):
-    cmd = [
-        "pacat",
-        "--playback",
-        "-d", "PhoneMicEngine",
-        "--rate=48000",
-        "--channels=1",
-        "--format=s16le",
-        "--raw",
-        "--latency-msec=10",
-        "--process-time-msec=5"
-    ]
-    proc = await asyncio.create_subprocess_exec(
-        *cmd,
-        stdin=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.DEVNULL
-    )
     resampler = av.AudioResampler(format="s16", layout="mono", rate=48000)
-
-    try:
-        while pc.connectionState not in ["failed", "closed"]:
-            frame = await track.recv()
-            for resampled in resampler.resample(frame):
-                raw_bytes = resampled.to_ndarray().tobytes()
-                proc.stdin.write(raw_bytes)
-                await proc.stdin.drain()
-    except Exception:
-        pass
-    finally:
+    
+    if not IS_WINDOWS:
+        cmd = ["pacat", "--playback", "-d", "PhoneMicEngine", "--rate=48000", "--channels=1", "--format=s16le", "--raw", "--latency-msec=10", "--process-time-msec=5"]
+        proc = await asyncio.create_subprocess_exec(*cmd, stdin=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
         try:
-            proc.terminate()
-        except Exception:
-            pass
+            while pc.connectionState not in ["failed", "closed"]:
+                frame = await track.recv()
+                for resampled in resampler.resample(frame):
+                    raw_bytes = resampled.to_ndarray().tobytes()
+                    try:
+                        proc.stdin.write(raw_bytes)
+                        await proc.stdin.drain()
+                    except (BrokenPipeError, ConnectionResetError): break
+        except Exception: pass
+        finally:
+            try: proc.terminate()
+            except Exception: pass
+    else:
+        import pyaudio
+        p = pyaudio.PyAudio()
+        stream = p.open(format=pyaudio.paInt16, channels=1, rate=48000, output=True)
+        try:
+            while pc.connectionState not in ["failed", "closed"]:
+                frame = await track.recv()
+                for resampled in resampler.resample(frame):
+                    raw_bytes = resampled.to_ndarray().tobytes()
+                    stream.write(raw_bytes)
+        except Exception: pass
+        finally:
+            stream.stop_stream()
+            stream.close()
+            p.terminate()
 
 async def init_virtual_camera():
     global vcam
     try:
-        vcam = pyvirtualcam.Camera(width=1280, height=720, fps=30, device='/dev/video10', fmt=pyvirtualcam.PixelFormat.BGR)
+        if IS_WINDOWS:
+            vcam = pyvirtualcam.Camera(width=1280, height=720, fps=30, backend='obs', fmt=pyvirtualcam.PixelFormat.BGR)
+        else:
+            vcam = pyvirtualcam.Camera(width=1280, height=720, fps=30, device='/dev/video10', fmt=pyvirtualcam.PixelFormat.BGR)
         vcam.send(make_standby_frame())
     except Exception as e:
-        print(f"V4L2 Init: {e}")
+        print(f"[VirtualCam Init Notice] {e}")
 
-app = web.Application()
+app = web.Application(client_max_size=1024**3 * 10)
 app.router.add_get("/", handle_dashboard)
 app.router.add_get("/phone", handle_phone)
+app.router.add_get("/api/qr", get_qr)
 app.router.add_get("/api/status", get_status)
+app.router.add_get("/ws/input", websocket_input_handler)
+app.router.add_post("/api/upload", upload_file)
+app.router.add_get("/api/files", list_files)
+app.router.add_get("/api/files/{filename}", download_file)
 app.router.add_post("/offer", offer)
 app.router.add_static("/static", path="./static", name="static")
 
@@ -225,15 +412,15 @@ if __name__ == "__main__":
     qr.add_data(MOBILE_URL)
     qr.make()
 
-    print("\n" + "="*60)
-    print("       LINUX AV STREAM HUB (HARDWARE MIC READY)")
-    print("="*60)
-    print(f" PC Dashboard:   {DASHBOARD_URL}")
-    print(f" Phone Access:   {MOBILE_URL}")
-    print(f" Default Mic:    Phone_Microphone (Recognized by all sites)")
+    print("\n" + "="*65)
+    print(f"   CROSS-PLATFORM PHONE-TO-PC ECOSYSTEM ({platform.system().upper()})")
+    print("="*65)
+    print(f" PC Dashboard:  {DASHBOARD_URL}")
+    print(f" Phone Access:  {MOBILE_URL}")
+    print(f" File Storage:  {TRANSFER_DIR}")
     print("\nScan QR Code on Phone:")
     qr.print_ascii(invert=True)
-    print("="*60 + "\n")
+    print("="*65 + "\n")
 
     loop = asyncio.get_event_loop()
     loop.run_until_complete(init_virtual_camera())

@@ -2,57 +2,80 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Linux AV Bridge Hub</title>
-  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+  <title>Universal PC Control Hub Pro</title>
   <style>
-    :root { --bg: #0f172a; --panel: #1e293b; --text: #f8fafc; --accent: #38bdf8; --green: #22c55e; }
-    body { font-family: system-ui, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 24px; }
-    .grid { display: grid; grid-template-columns: 320px 1fr; gap: 24px; max-width: 1050px; margin: auto; }
-    .card { background: var(--panel); border-radius: 12px; padding: 24px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.3); }
-    h1 { font-size: 1.5rem; color: var(--accent); margin-top: 0; }
-    .status-badge { display: inline-flex; align-items: center; gap: 8px; font-weight: bold; }
-    .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--green); }
-    canvas { width: 100% !important; height: auto !important; border-radius: 8px; margin-top: 15px; }
-    .stat-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #334155; }
-    code { color: var(--accent); font-size: 0.95rem; }
+    :root {
+      --bg: #090d16;
+      --panel: #131b2e;
+      --panel-sub: #1e293b;
+      --text: #f8fafc;
+      --text-dim: #94a3b8;
+      --accent: #38bdf8;
+      --green: #10b981;
+      --border: #23314d;
+    }
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 28px; }
+    .container { max-width: 1100px; margin: auto; display: grid; grid-template-columns: 320px 1fr; gap: 24px; }
+    .card { background: var(--panel); border-radius: 16px; padding: 24px; border: 1px solid var(--border); box-shadow: 0 10px 30px rgba(0,0,0,0.3); }
+    h1 { font-size: 1.45rem; color: var(--accent); margin: 0; }
+    .status-badge { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; font-size: 0.85rem; color: var(--green); background: rgba(16,185,129,0.1); padding: 4px 12px; border-radius: 20px; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); }
+    #qrImg { width: 100%; max-width: 250px; height: auto; border-radius: 12px; margin-top: 14px; background: #090d16; padding: 8px; border: 1px solid var(--border); }
+    .stat-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 0.88rem; }
+    code { color: var(--accent); font-family: monospace; font-size: 0.92rem; }
     .card-actions { display: flex; gap: 10px; margin-top: 20px; }
-    .btn { background: #334155; color: white; border: none; padding: 10px 16px; border-radius: 8px; cursor: pointer; text-decoration: none; font-size: 0.9rem; }
-    .btn:hover { background: #475569; }
+    .btn { background: var(--panel-sub); color: #fff; border: 1px solid var(--border); padding: 10px 16px; border-radius: 8px; cursor: pointer; text-decoration: none; font-size: 0.88rem; font-weight: 500; transition: 0.15s; }
+    .btn:hover { background: #334155; }
+    .btn-main { background: #0284c7; border-color: #0284c7; }
   </style>
 </head>
 <body>
-  <div class="grid">
+  <div class="container">
     <div class="card" style="text-align: center;">
-      <h2 style="margin: 0 0 10px;">Connect Mobile</h2>
-      <p style="color: #94a3b8; font-size: 0.85rem; margin: 0;">Scan with Phone Camera</p>
-      <canvas id="qrCanvas"></canvas>
-      <p style="word-break: break-all; margin-top: 12px;"><code id="phoneUrl">Loading...</code></p>
+      <h2 style="margin: 0 0 6px; font-size:1.25rem;">Connect Mobile</h2>
+      <p style="color: var(--text-dim); font-size: 0.82rem; margin: 0;">Scan with Phone Camera</p>
+      <img id="qrImg" src="/api/qr" alt="QR Code">
+      <p style="word-break: break-all; margin-top: 14px;"><code id="phoneUrl">Loading...</code></p>
     </div>
+
     <div class="card">
-      <h1>Production AV Hub</h1>
-      <div class="status-badge"><div class="dot"></div> Server Ready</div>
-      <div style="margin-top: 15px;">
-        <div class="stat-row"><span>Video Device</span><code>/dev/video10 (PhoneWebcam)</code></div>
-        <div class="stat-row"><span>Microphone Device</span><code>VirtualMic (Phone_Microphone)</code></div>
-        <div class="stat-row"><span>Desktop Audio Source</span><code>@DEFAULT_MONITOR@</code></div>
-        <div class="stat-row"><span>Active Streams</span><code id="activeConn">0</code></div>
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <h1>Universal Control Ecosystem Pro</h1>
+        <div class="status-badge"><div class="dot"></div> Hub Online</div>
       </div>
+      
+      <div style="margin-top: 16px;">
+        <div class="stat-row"><span>Video Device</span><code>/dev/video10 (PhoneWebcam)</code></div>
+        <div class="stat-row"><span>Microphone Device</span><code>Phone_Microphone (Standalone)</code></div>
+        <div class="stat-row"><span>Mobile Battery Level</span><code id="telBattery">100%</code></div>
+        <div class="stat-row"><span>Control Engine</span><code>WebSocket Sub-5ms Trackpad & Gyro</code></div>
+        <div class="stat-row"><span>LAN File Storage</span><code id="savePath">~/Downloads</code></div>
+      </div>
+
       <div class="card-actions">
-        <a href="/phone" target="_blank" class="btn">Open Local Phone View</a>
+        <a href="/phone" target="_blank" class="btn btn-main">Open Mobile View</a>
         <button onclick="navigator.clipboard.writeText(document.getElementById('phoneUrl').innerText)" class="btn">Copy URL</button>
+      </div>
+
+      <div style="margin-top: 22px; border-top: 1px solid var(--border); padding-top: 16px;">
+        <h3 style="margin: 0 0 8px; font-size: 1rem;">Live Shared Clipboard (Linux System)</h3>
+        <textarea id="dashClip" style="width:100%; height:60px; border-radius:8px; border:1px solid var(--border); background:#090d16; color:#fff; padding:8px; font-family:monospace; font-size:0.85rem; resize:none;" readonly></textarea>
       </div>
     </div>
   </div>
+
   <script>
     async function refresh() {
       const res = await fetch('/api/status');
       const data = await res.json();
       document.getElementById('phoneUrl').innerText = data.mobile_url;
-      document.getElementById('activeConn').innerText = data.active_connections;
-      QRCode.toCanvas(document.getElementById('qrCanvas'), data.mobile_url, { width: 260, margin: 1 });
+      document.getElementById('savePath').innerText = data.save_path;
+      document.getElementById('telBattery').innerText = `${data.telemetry.battery} ${data.telemetry.charging ? '⚡ (Charging)' : ''}`;
+      document.getElementById('dashClip').value = data.clipboard || '(Clipboard Empty)';
     }
     refresh();
-    setInterval(refresh, 3000);
+    setInterval(refresh, 2500);
   </script>
 </body>
 </html>

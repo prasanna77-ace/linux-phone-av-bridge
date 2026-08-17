@@ -1,4 +1,4 @@
-import ssl, asyncio, socket, subprocess, os, fractions, cv2, json, time, platform, webbrowser
+import ssl, asyncio, socket, subprocess, os, fractions, cv2, json, time, platform, webbrowser, glob
 from concurrent.futures import ThreadPoolExecutor
 from aiohttp import web, WSMsgType
 from aiortc import RTCPeerConnection, RTCSessionDescription, RTCConfiguration, RTCIceServer, AudioStreamTrack
@@ -29,7 +29,7 @@ if not IS_WINDOWS:
                 e.KEY_LEFTMETA, e.KEY_F5, e.KEY_ESC, e.KEY_LEFT, e.KEY_RIGHT, e.KEY_UP, e.KEY_DOWN
             ]
         }
-        uinput_device = UInput(cap, name="PhoneBridge-Ultra-Device")
+        uinput_device = UInput(cap, name="PhoneBridge-Master-Device")
     except Exception:
         uinput_device = None
 
@@ -41,42 +41,41 @@ try:
 except Exception:
     pynput_mouse, pynput_keyboard = None, None
 
-executor = ThreadPoolExecutor(max_workers=3)
+executor = ThreadPoolExecutor(max_workers=4)
 pcs = set()
 vcam = None
 vcam_lock = asyncio.Lock()
 active_tasks = set()
 ws_clients = set()
-mobile_telemetry = {"battery": "100%", "charging": False, "device": "Mobile", "mode": "av", "cam_active": False, "mic_active": False}
+latest_video_frame = None
+
+mobile_telemetry = {
+    "battery": "100%", "charging": False, "device": "Mobile",
+    "mode": "av", "cam_active": False, "mic_active": False, "fps": 30, "rtt": 0
+}
 
 TRANSFER_DIR = os.path.expanduser("~/Downloads/PhoneBridge_Transfers")
 os.makedirs(TRANSFER_DIR, exist_ok=True)
 
-VCAM_DEVICE = os.environ.get("VIRTUAL_CAM_DEV", "/dev/video10")
 VCAM_WIDTH = 1280
 VCAM_HEIGHT = 720
 VCAM_FPS = 30
 
-GITHUB_PAGES_BASE = "https://prasanna77-ace.github.io/linux-phone-av-bridge"
-
 def get_best_lan_ip():
-    """Detects active LAN IP across Wi-Fi, Ethernet, and USB Tethering."""
     candidates = []
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(('1.1.1.1', 80))
         candidates.append(s.getsockname()[0])
         s.close()
-    except Exception:
-        pass
+    except Exception: pass
 
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(('192.168.1.1', 80))
         candidates.append(s.getsockname()[0])
         s.close()
-    except Exception:
-        pass
+    except Exception: pass
 
     for ip in candidates:
         if not ip.startswith("127."):
@@ -84,9 +83,8 @@ def get_best_lan_ip():
     return "127.0.0.1"
 
 LAN_IP = get_best_lan_ip()
-LOCAL_DIRECT_URL = f"https://{LAN_IP}:8443/phone.html"
-PAGES_DIRECT_URL = f"{GITHUB_PAGES_BASE}/phone.html?host={LAN_IP}:8443"
-DASHBOARD_URL = f"{GITHUB_PAGES_BASE}/?host={LAN_IP}:8443"
+DIRECT_LOCAL_DASHBOARD = f"https://{LAN_IP}:8443/"
+DIRECT_PHONE_URL = f"https://{LAN_IP}:8443/phone.html"
 
 def get_sys_clipboard():
     try: return pyperclip.paste()
@@ -96,10 +94,10 @@ def set_sys_clipboard(text):
     try: pyperclip.copy(text)
     except Exception: pass
 
-def make_standby_frame(w=VCAM_WIDTH, h=VCAM_HEIGHT, text="PhoneBridge Standby"):
+def make_standby_frame(w=VCAM_WIDTH, h=VCAM_HEIGHT, text="PhoneBridge Master Standby"):
     img = np.zeros((h, w, 3), dtype=np.uint8)
     img[:] = (10, 15, 29)
-    cv2.putText(img, text, (int(w*0.28), int(h*0.48)), cv2.FONT_HERSHEY_SIMPLEX, 1.1, (56, 189, 248), 2, cv2.LINE_AA)
+    cv2.putText(img, text, (int(w*0.24), int(h*0.48)), cv2.FONT_HERSHEY_SIMPLEX, 1.1, (56, 189, 248), 2, cv2.LINE_AA)
     cv2.putText(img, "Ready for WebRTC AV Transmission", (int(w*0.30), int(h*0.56)), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (148, 163, 184), 1, cv2.LINE_AA)
     return img
 
@@ -122,10 +120,13 @@ class NonBlockingDesktopAudio(AudioStreamTrack):
                 "parec", "--format=s16le", "--rate=48000", "--channels=2",
                 "--raw", "--latency-msec=10", "--process-time-msec=5", "-d", "@DEFAULT_MONITOR@"
             ]
-            self.proc = await asyncio.create_subprocess_exec(
-                *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL
-            )
-            self.reader = self.proc.stdout
+            try:
+                self.proc = await asyncio.create_subprocess_exec(
+                    *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL
+                )
+                self.reader = self.proc.stdout
+            except Exception:
+                self.proc = None
         else:
             try:
                 import pyaudiowpatch as pyaudio
@@ -185,23 +186,19 @@ class NonBlockingDesktopAudio(AudioStreamTrack):
             except Exception: pass
 
 async def handle_index(request):
-    if os.path.exists("index.html"):
-        return web.FileResponse("index.html")
+    if os.path.exists("index.html"): return web.FileResponse("index.html")
     return web.Response(text="PhoneBridge Core Running")
 
-async def handle_phone_page(request):
-    if os.path.exists("phone.html"):
-        return web.FileResponse("phone.html")
+async def handle_phone(request):
+    if os.path.exists("phone.html"): return web.FileResponse("phone.html")
     return web.Response(text="PhoneBridge Controller Ready")
 
 async def handle_manifest(request):
-    if os.path.exists("manifest.json"):
-        return web.FileResponse("manifest.json")
+    if os.path.exists("manifest.json"): return web.FileResponse("manifest.json")
     return web.Response(status=404)
 
 async def handle_sw(request):
-    if os.path.exists("sw.js"):
-        return web.FileResponse("sw.js", headers={"Content-Type": "application/javascript"})
+    if os.path.exists("sw.js"): return web.FileResponse("sw.js", headers={"Content-Type": "application/javascript"})
     return web.Response(status=404)
 
 async def get_status(request):
@@ -211,7 +208,7 @@ async def get_status(request):
         "lan_ip": LAN_IP,
         "host": f"{LAN_IP}:8443",
         "active_connections": len(pcs) + len(ws_clients),
-        "files_count": len(files),
+        "files": files,
         "save_path": TRANSFER_DIR,
         "telemetry": mobile_telemetry,
         "clipboard": get_sys_clipboard(),
@@ -337,7 +334,7 @@ async def websocket_input_handler(request):
 
 async def upload_file(request):
     reader = await request.multipart()
-    uploaded_files = []
+    uploaded = []
     while True:
         part = await reader.next()
         if part is None: break
@@ -350,8 +347,8 @@ async def upload_file(request):
                     chunk = await part.read_chunk(size=1024*1024)
                     if not chunk: break
                     f.write(chunk)
-            uploaded_files.append(safe_name)
-    return web.json_response({"status": "uploaded", "files": uploaded_files, "dir": TRANSFER_DIR})
+            uploaded.append(safe_name)
+    return web.json_response({"status": "uploaded", "files": uploaded, "dir": TRANSFER_DIR})
 
 async def list_files(request):
     files = [{"name": f, "size": os.path.getsize(os.path.join(TRANSFER_DIR, f))} for f in os.listdir(TRANSFER_DIR) if os.path.isfile(os.path.join(TRANSFER_DIR, f))]
@@ -369,7 +366,6 @@ async def offer(request):
     offer = RTCSessionDescription(sdp=params["sdp"], type=params["type"])
     enable_pc_to_phone = params.get("enable_pc_to_phone", True)
 
-    # Added Google STUN servers for reliable LAN traversal
     ice_servers = [RTCIceServer(urls=["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"])]
     pc = RTCPeerConnection(configuration=RTCConfiguration(iceServers=ice_servers))
     pcs.add(pc)
@@ -417,13 +413,14 @@ def process_frame(frame, w_target, h_target):
     return img
 
 async def handle_video(track, pc):
-    global vcam
+    global vcam, latest_video_frame
     loop = asyncio.get_running_loop()
 
     while pc.connectionState not in ["failed", "closed"]:
         try:
             frame = await track.recv()
             img = await loop.run_in_executor(executor, process_frame, frame, VCAM_WIDTH, VCAM_HEIGHT)
+            latest_video_frame = img
             async with vcam_lock:
                 if vcam is not None: vcam.send(img)
         except Exception: break
@@ -462,23 +459,31 @@ async def handle_mic(track, pc):
         finally:
             stream.stop_stream(); stream.close(); p.terminate()
 
+def find_v4l2_device():
+    # Scan for created v4l2loopback minor nodes
+    devices = sorted(glob.glob('/dev/video*'))
+    if '/dev/video10' in devices:
+        return '/dev/video10'
+    for d in devices:
+        if d != '/dev/video0': return d
+    return '/dev/video0' if devices else '/dev/video10'
+
 async def init_virtual_camera():
     global vcam
+    device_path = find_v4l2_device()
     try:
         if IS_WINDOWS:
             vcam = pyvirtualcam.Camera(width=VCAM_WIDTH, height=VCAM_HEIGHT, fps=VCAM_FPS, backend='obs', fmt=pyvirtualcam.PixelFormat.BGR)
         else:
-            vcam = pyvirtualcam.Camera(width=VCAM_WIDTH, height=VCAM_HEIGHT, fps=VCAM_FPS, device=VCAM_DEVICE, fmt=pyvirtualcam.PixelFormat.BGR)
+            vcam = pyvirtualcam.Camera(width=VCAM_WIDTH, height=VCAM_HEIGHT, fps=VCAM_FPS, device=device_path, fmt=pyvirtualcam.PixelFormat.BGR)
         vcam.send(make_standby_frame())
     except Exception as e:
-        print(f"[VirtualCam Notice] {e}")
+        print(f"[VirtualCam Init Notice] Camera bypassed ({e})")
 
 @web.middleware
 async def cors_middleware(request, handler):
-    if request.method == "OPTIONS":
-        response = web.Response()
-    else:
-        response = await handler(request)
+    if request.method == "OPTIONS": response = web.Response()
+    else: response = await handler(request)
     response.headers["Access-Control-Allow-Origin"] = "*"
     response.headers["Access-Control-Allow-Methods"] = "POST, GET, OPTIONS"
     response.headers["Access-Control-Allow-Headers"] = "Content-Type"
@@ -487,7 +492,7 @@ async def cors_middleware(request, handler):
 app = web.Application(client_max_size=1024**3 * 10, middlewares=[cors_middleware])
 app.router.add_route("OPTIONS", "/{tail:.*}", lambda r: web.Response())
 app.router.add_get("/", handle_index)
-app.router.add_get("/phone.html", handle_phone_page)
+app.router.add_get("/phone.html", handle_phone)
 app.router.add_get("/manifest.json", handle_manifest)
 app.router.add_get("/sw.js", handle_sw)
 app.router.add_get("/api/status", get_status)
@@ -498,23 +503,23 @@ app.router.add_get("/api/files/{filename}", download_file)
 app.router.add_post("/offer", offer)
 
 if __name__ == "__main__":
-    try: pyperclip.copy(DASHBOARD_URL)
+    try: pyperclip.copy(DIRECT_LOCAL_DASHBOARD)
     except Exception: pass
 
     qr = qrcode.QRCode()
-    qr.add_data(LOCAL_DIRECT_URL)
+    qr.add_data(DIRECT_PHONE_URL)
     qr.make()
 
     print("\n" + "═"*72)
-    print("      PHONE-TO-PC BRIDGE (STABILITY & ZERO-SSL-FRICTION)")
+    print("      PHONE-TO-PC MASTER ECOSYSTEM (ZERO-FAILURE RELAY)")
     print("═"*72)
-    print(f"\n👉 Direct PC Dashboard:\n   {DASHBOARD_URL}")
-    print(f"\n👉 Direct Phone Access (Accept Cert once on phone):\n   {LOCAL_DIRECT_URL}\n")
-    print("👉 Scan with Phone Camera:")
+    print(f"\n👉 Desktop Master Dashboard:\n   {DIRECT_LOCAL_DASHBOARD}")
+    print(f"\n👉 Direct Phone Access (Scan with Phone):\n   {DIRECT_PHONE_URL}\n")
+    print("👉 Terminal QR Code:")
     qr.print_ascii(invert=True)
     print("═"*72 + "\n")
 
-    try: webbrowser.open(DASHBOARD_URL)
+    try: webbrowser.open(DIRECT_LOCAL_DASHBOARD)
     except Exception: pass
 
     loop = asyncio.get_event_loop()

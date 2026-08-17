@@ -78,6 +78,16 @@
 
         let ws = null, pc = null, localStream = null;
         let currentFacingMode = "environment", torchActive = false;
+        let wakeLock = null;
+
+        // Prevent mobile screen from sleeping during active bridge session
+        async function requestWakeLock() {
+            try {
+                if ('wakeLock' in navigator) {
+                    wakeLock = await navigator.wakeLock.request('screen');
+                }
+            } catch (err) {}
+        }
 
         document.getElementById('certPair').href = `https://${host}/api/status`;
 
@@ -88,6 +98,7 @@
                 document.getElementById('dot').className = 'w-2.5 h-2.5 rounded-full bg-emerald-400';
                 document.getElementById('status-text').innerText = 'Bridge Connected';
                 document.getElementById('certPair').classList.add('hidden');
+                requestWakeLock();
                 startBatteryReporting();
                 startAVStream();
             };

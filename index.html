@@ -3,156 +3,163 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Phone-to-PC WebRTC Studio</title>
+    <title>PhoneBridge Studio Pro</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
         body { font-family: 'Plus Jakarta Sans', sans-serif; }
-        .glass { background: rgba(15, 23, 42, 0.78); backdrop-filter: blur(18px); border: 1px solid rgba(255, 255, 255, 0.08); }
+        .glass { background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.08); }
         .glow { box-shadow: 0 0 45px -10px rgba(56, 189, 248, 0.18); }
         .wave-bar { animation: pulseWave 1.2s infinite ease-in-out; }
-        @keyframes pulseWave { 0%, 100% { height: 4px; } 50% { height: 18px; } }
+        @keyframes pulseWave { 0%, 100% { height: 4px; } 50% { height: 16px; } }
     </style>
 </head>
 <body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col justify-between p-4 selection:bg-sky-500 selection:text-slate-950">
 
-    <!-- Top Status Header -->
-    <header class="w-full max-w-5xl mx-auto flex items-center justify-between py-3">
+    <!-- Header Navigation & Status -->
+    <header class="w-full max-w-5xl mx-auto flex items-center justify-between py-3 border-b border-slate-900 pb-3">
         <div class="flex items-center gap-3">
-            <div class="w-10 h-10 rounded-2xl bg-gradient-to-tr from-sky-500 via-indigo-500 to-cyan-400 flex items-center justify-center font-black text-slate-950 shadow-lg shadow-sky-500/25">⚡</div>
+            <div class="w-9 h-9 rounded-2xl bg-gradient-to-tr from-sky-500 to-indigo-600 flex items-center justify-center font-black text-slate-950 shadow-md">⚡</div>
             <div>
                 <div class="flex items-center gap-2">
-                    <h1 class="text-lg font-bold text-slate-100 leading-tight tracking-tight">PhoneBridge Studio</h1>
-                    <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-sky-500/10 text-sky-400 border border-sky-500/20">BI-DIRECTIONAL AV</span>
+                    <h1 class="text-base font-bold text-slate-100 leading-tight">PhoneBridge Studio</h1>
+                    <span id="active-mode-badge" class="text-[9px] font-extrabold px-2 py-0.5 rounded-full bg-sky-500/10 text-sky-400 border border-sky-500/20">STUDIO AV</span>
                 </div>
-                <p class="text-xs text-slate-400">Zero-latency smartphone webcam, mic & PC desktop audio monitor</p>
+                <p class="text-xs text-slate-400">Zero-Latency AV & Hardware Input Hub</p>
             </div>
         </div>
-        <div id="conn-badge" class="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-slate-900 border border-slate-800 text-xs font-semibold text-amber-400">
-            <span class="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
-            <span id="conn-text">Checking Engine...</span>
+
+        <div class="flex items-center gap-3">
+            <div id="conn-badge" class="flex items-center gap-2 px-3 py-1 rounded-full bg-slate-900 border border-slate-800 text-xs font-semibold text-amber-400">
+                <span id="conn-dot" class="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
+                <span id="conn-text">Disconnected</span>
+            </div>
+            <button id="main-conn-btn" onclick="toggleEngineConnection()" class="px-4 py-1.5 rounded-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs shadow transition active:scale-95">
+                Connect
+            </button>
         </div>
     </header>
 
     <!-- Main Workspace -->
     <main class="w-full max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-12 gap-5 my-auto">
         
-        <!-- Left Side: QR Connect & Audio Monitor -->
+        <!-- Left Side: QR Code & Live Hardware Telemetry -->
         <div class="md:col-span-5 glass rounded-3xl p-6 glow flex flex-col justify-between space-y-5">
             <div>
                 <div class="flex items-center justify-between mb-3">
                     <span class="text-xs font-extrabold uppercase tracking-wider text-slate-400">1. Instant Pair</span>
-                    <span class="text-[10px] text-emerald-400 font-bold bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">READY</span>
+                    <span id="device-chip" class="text-[10px] text-slate-400 font-bold bg-slate-900 px-2 py-0.5 rounded-full border border-slate-800">NO DEVICE</span>
                 </div>
-                <p class="text-xs text-slate-400 leading-relaxed mb-4">Scan using your mobile camera. Bi-directional audio & video start immediately.</p>
                 <div class="flex flex-col items-center justify-center p-4 bg-slate-900/90 rounded-2xl border border-slate-800/90 shadow-inner">
                     <div id="qrcode" class="p-2 bg-white rounded-xl shadow"></div>
-                    <span id="host-label" class="text-[11px] font-mono text-slate-400 mt-3">Auto-detecting...</span>
+                    <span id="host-label" class="text-[11px] font-mono text-slate-400 mt-2.5">Auto-detecting...</span>
                 </div>
             </div>
 
-            <!-- Audio Transmission Indicator -->
-            <div class="bg-slate-900/60 p-3.5 rounded-2xl border border-slate-800/80 flex items-center justify-between">
-                <div class="flex items-center gap-3">
-                    <div class="flex items-end gap-1 h-5">
-                        <div class="w-1 bg-sky-400 rounded wave-bar" style="animation-delay: 0.1s"></div>
-                        <div class="w-1 bg-sky-400 rounded wave-bar" style="animation-delay: 0.3s"></div>
-                        <div class="w-1 bg-sky-400 rounded wave-bar" style="animation-delay: 0.2s"></div>
-                        <div class="w-1 bg-sky-400 rounded wave-bar" style="animation-delay: 0.4s"></div>
+            <!-- Real-Time Hardware Matrix -->
+            <div class="space-y-2">
+                <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Hardware Telemetry</span>
+                <div class="grid grid-cols-2 gap-2 text-xs">
+                    <div class="p-2 bg-slate-900/80 rounded-xl border border-slate-800 flex items-center justify-between">
+                        <span class="text-slate-400">📷 Camera:</span>
+                        <span id="hw-cam" class="font-bold text-slate-500">OFF</span>
                     </div>
-                    <div>
-                        <div class="text-xs font-bold text-slate-200">Bi-Directional Audio</div>
-                        <div class="text-[10px] text-slate-400">PC Speaker ⇄ Phone Mic Engine</div>
+                    <div class="p-2 bg-slate-900/80 rounded-xl border border-slate-800 flex items-center justify-between">
+                        <span class="text-slate-400">🎙️ Mic:</span>
+                        <span id="hw-mic" class="font-bold text-slate-500">OFF</span>
+                    </div>
+                    <div class="p-2 bg-slate-900/80 rounded-xl border border-slate-800 flex items-center justify-between">
+                        <span class="text-slate-400">🔊 PC Audio:</span>
+                        <span id="hw-speaker" class="font-bold text-emerald-400">ROUTED</span>
+                    </div>
+                    <div class="p-2 bg-slate-900/80 rounded-xl border border-slate-800 flex items-center justify-between">
+                        <span class="text-slate-400">🔋 Battery:</span>
+                        <span id="battery-level" class="font-bold text-sky-400">100%</span>
                     </div>
                 </div>
-                <span class="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-1 rounded-lg border border-emerald-500/20">LIVE</span>
             </div>
 
-            <!-- SSL Helper (Hidden once paired) -->
-            <div id="ssl-box" class="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between">
+            <!-- SSL Helper Link -->
+            <div id="ssl-box" class="p-3 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between">
                 <div class="text-xs text-amber-300">
-                    <span class="font-bold">First time pairing?</span>
-                    <p class="text-[11px] text-amber-400/80">Allow the local SSL certificate.</p>
+                    <span class="font-bold">First-Time SSL Pairing?</span>
+                    <p class="text-[10px] text-amber-400/80">Allow certificate on your PC.</p>
                 </div>
                 <a id="certLink" href="#" target="_blank" class="px-3 py-1.5 bg-amber-500 text-slate-950 text-xs font-bold rounded-xl hover:bg-amber-400 transition">Allow SSL ↗</a>
             </div>
         </div>
 
-        <!-- Right Side: Hardware Matrix, Keyboard, Telemetry -->
-        <div class="md:col-span-7 glass rounded-3xl p-6 glow flex flex-col justify-between space-y-6">
+        <!-- Right Side: Mode Deck & Controls -->
+        <div class="md:col-span-7 glass rounded-3xl p-6 glow flex flex-col justify-between space-y-4">
             <div>
-                <div class="flex items-center justify-between mb-4">
-                    <span class="text-xs font-extrabold uppercase tracking-wider text-slate-400">2. Remote Controls</span>
-                    <div id="telemetry-box" class="text-xs font-bold text-slate-400 flex items-center gap-3">
-                        <span>📱 <span id="device-type">Mobile</span></span>
-                        <span id="battery-level" class="text-sky-400">🔋 100%</span>
-                    </div>
+                <div class="flex items-center justify-between mb-3">
+                    <span class="text-xs font-extrabold uppercase tracking-wider text-slate-400">2. Remote Deck</span>
+                    <span class="text-[11px] text-slate-400 font-mono">Kernel uinput active</span>
                 </div>
 
-                <!-- Hardware Actions -->
-                <div class="grid grid-cols-3 gap-3">
-                    <button onclick="sendAction('toggle_cam')" class="bg-slate-900/90 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 p-4 rounded-2xl flex flex-col items-center justify-center gap-2 transition active:scale-95 shadow-sm">
-                        <span class="text-2xl">📷</span>
+                <!-- Hardware Toggles -->
+                <div class="grid grid-cols-3 gap-2.5">
+                    <button onclick="sendAction('toggle_cam')" class="bg-slate-900/90 hover:bg-slate-800 border border-slate-800 p-3.5 rounded-2xl flex flex-col items-center justify-center gap-1.5 transition active:scale-95">
+                        <span class="text-xl">📷</span>
                         <span class="text-xs font-bold text-slate-200">Toggle Cam</span>
                     </button>
-                    <button onclick="sendAction('flip_cam')" class="bg-slate-900/90 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 p-4 rounded-2xl flex flex-col items-center justify-center gap-2 transition active:scale-95 shadow-sm">
-                        <span class="text-2xl">🔄</span>
+                    <button onclick="sendAction('flip_cam')" class="bg-slate-900/90 hover:bg-slate-800 border border-slate-800 p-3.5 rounded-2xl flex flex-col items-center justify-center gap-1.5 transition active:scale-95">
+                        <span class="text-xl">🔄</span>
                         <span class="text-xs font-bold text-slate-200">Flip Lens</span>
                     </button>
-                    <button onclick="sendAction('toggle_torch')" class="bg-slate-900/90 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 p-4 rounded-2xl flex flex-col items-center justify-center gap-2 transition active:scale-95 shadow-sm">
-                        <span class="text-2xl">🔦</span>
+                    <button onclick="sendAction('toggle_torch')" class="bg-slate-900/90 hover:bg-slate-800 border border-slate-800 p-3.5 rounded-2xl flex flex-col items-center justify-center gap-1.5 transition active:scale-95">
+                        <span class="text-xl">🔦</span>
                         <span class="text-xs font-bold text-slate-200">Flashlight</span>
                     </button>
                 </div>
 
-                <!-- Quick Media Bar -->
-                <div class="mt-4 bg-slate-900/50 p-3 rounded-2xl border border-slate-800 flex items-center justify-between">
-                    <span class="text-xs font-bold text-slate-400 ml-1">Media Controls:</span>
-                    <div class="flex gap-2">
-                        <button onclick="sendMacro('prev')" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 rounded-xl text-xs">⏮</button>
-                        <button onclick="sendMacro('play_pause')" class="px-3 py-1.5 bg-sky-500 text-slate-950 font-bold hover:bg-sky-400 rounded-xl text-xs">⏯</button>
-                        <button onclick="sendMacro('next')" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 rounded-xl text-xs">⏭</button>
-                        <button onclick="sendMacro('vol_down')" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 rounded-xl text-xs">🔉</button>
-                        <button onclick="sendMacro('vol_up')" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 rounded-xl text-xs">🔊</button>
+                <!-- Media Macros Bar -->
+                <div class="mt-3 bg-slate-900/50 p-2.5 rounded-2xl border border-slate-800 flex items-center justify-between">
+                    <span class="text-xs font-bold text-slate-400 ml-1">Desktop Media:</span>
+                    <div class="flex gap-1.5">
+                        <button onclick="sendMacro('prev')" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 rounded-xl text-xs">⏮</button>
+                        <button onclick="sendMacro('play_pause')" class="px-3 py-1 bg-sky-500 text-slate-950 font-bold hover:bg-sky-400 rounded-xl text-xs">⏯</button>
+                        <button onclick="sendMacro('next')" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 rounded-xl text-xs">⏭</button>
+                        <button onclick="sendMacro('vol_down')" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 rounded-xl text-xs">🔉</button>
+                        <button onclick="sendMacro('vol_up')" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 rounded-xl text-xs">🔊</button>
                     </div>
                 </div>
             </div>
 
-            <!-- Remote Keyboard / Text Sender -->
-            <div class="bg-slate-900/80 p-4 rounded-2xl border border-slate-800/80 space-y-2">
-                <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider">Remote Text Sender</label>
+            <!-- Remote Text Injection -->
+            <div class="bg-slate-900/80 p-3.5 rounded-2xl border border-slate-800 space-y-2">
+                <label class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider">Direct Text Streamer</label>
                 <div class="flex gap-2">
-                    <input id="remoteText" type="text" placeholder="Type message to stream directly to PC active window..." class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none focus:border-sky-500">
+                    <input id="remoteText" type="text" placeholder="Type text to inject into focused desktop window..." class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none focus:border-sky-500">
                     <button onclick="sendText()" class="bg-sky-500 hover:bg-sky-400 text-slate-950 px-4 py-2 rounded-xl text-xs font-bold transition">Send</button>
                 </div>
             </div>
 
-            <!-- Target IP Settings Accordion -->
-            <div class="border-t border-slate-800/80 pt-3 flex items-center justify-between text-xs text-slate-400">
-                <span>Engine Host Config</span>
-                <button onclick="toggleManual()" class="text-sky-400 hover:underline">Manual IP</button>
+            <!-- Host Setting Accordion -->
+            <div class="border-t border-slate-800 pt-2 flex items-center justify-between text-xs text-slate-400">
+                <span>Engine Host: <b id="current-host" class="text-sky-400 font-mono">--</b></span>
+                <button onclick="toggleManual()" class="text-sky-400 hover:underline">Edit Host</button>
             </div>
             <div id="manual-ip-row" class="hidden flex gap-2">
-                <input id="serverIp" type="text" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs font-mono text-white focus:outline-none focus:border-sky-500">
-                <button onclick="saveManualHost()" class="bg-sky-500 hover:bg-sky-400 text-slate-950 px-4 py-2 rounded-xl text-xs font-bold">Save</button>
+                <input id="serverIp" type="text" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-1.5 text-xs font-mono text-white focus:outline-none focus:border-sky-500">
+                <button onclick="saveManualHost()" class="bg-sky-500 hover:bg-sky-400 text-slate-950 px-4 py-1.5 rounded-xl text-xs font-bold">Save</button>
             </div>
         </div>
     </main>
 
-    <!-- Clean Non-Intrusive Banner Placement -->
-    <footer class="w-full max-w-5xl mx-auto my-3">
-        <div class="bg-slate-900/40 border border-slate-800/60 rounded-2xl p-3 text-center">
+    <!-- Clean Monetization Unit -->
+    <footer class="w-full max-w-5xl mx-auto my-2">
+        <div class="bg-slate-900/40 border border-slate-800/60 rounded-2xl p-2.5 text-center">
             <span class="text-[9px] uppercase tracking-widest text-slate-500 block mb-1">Sponsored Advertisement</span>
-            <div class="min-h-[85px] flex items-center justify-center bg-slate-950/60 rounded-xl border border-dashed border-slate-800 text-xs text-slate-600">
-                EthicalAds / Google AdSense Clean Display Placement (728x90)
+            <div class="min-h-[80px] flex items-center justify-center bg-slate-950/60 rounded-xl border border-dashed border-slate-800 text-xs text-slate-600">
+                Clean Non-Intrusive Banner Placement (728x90)
             </div>
         </div>
     </footer>
 
     <script>
-        let ws = null;
-        let qr = null;
+        let ws = null, qr = null, isConnected = false;
 
         function getHost() {
             const urlParams = new URLSearchParams(window.location.search);
@@ -164,17 +171,18 @@
             qrContainer.innerHTML = "";
             qr = new QRCode(qrContainer, {
                 text: url,
-                width: 135,
-                height: 135,
+                width: 130,
+                height: 130,
                 colorDark: "#020617",
                 colorLight: "#ffffff",
                 correctLevel: QRCode.CorrectLevel.M
             });
         }
 
-        function initConnection() {
+        function connectEngine() {
             const host = getHost();
             document.getElementById('serverIp').value = host;
+            document.getElementById('current-host').innerText = host;
             document.getElementById('host-label').innerText = `Engine: ${host}`;
             localStorage.setItem('phonebridge_host', host);
 
@@ -187,10 +195,8 @@
             ws = new WebSocket(`wss://${host}/ws/input`);
 
             ws.onopen = () => {
-                const badge = document.getElementById('conn-badge');
-                badge.className = "flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-xs font-bold text-emerald-400";
-                document.getElementById('conn-text').innerText = "Engine Connected";
-                document.getElementById('ssl-box').classList.add('hidden');
+                isConnected = true;
+                setUIConnected(true);
             };
 
             ws.onmessage = (e) => {
@@ -198,25 +204,64 @@
                     const data = JSON.parse(e.data);
                     if (data.a === "telemetry_update") {
                         document.getElementById('battery-level').innerText = `🔋 ${data.battery}%`;
-                        document.getElementById('device-type').innerText = data.device || 'Mobile';
+                        document.getElementById('device-chip').innerText = data.device || 'PHONE CONNECTED';
+                        document.getElementById('device-chip').className = "text-[10px] text-emerald-400 font-bold bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20";
+                        if (data.mode) document.getElementById('active-mode-badge').innerText = data.mode.toUpperCase();
+                        if (data.cam_active !== undefined) {
+                            document.getElementById('hw-cam').innerText = data.cam_active ? 'ON' : 'OFF';
+                            document.getElementById('hw-cam').className = data.cam_active ? 'font-bold text-emerald-400' : 'font-bold text-slate-500';
+                        }
+                        if (data.mic_active !== undefined) {
+                            document.getElementById('hw-mic').innerText = data.mic_active ? 'ON' : 'OFF';
+                            document.getElementById('hw-mic').className = data.mic_active ? 'font-bold text-emerald-400' : 'font-bold text-slate-500';
+                        }
                     }
                 } catch(err) {}
             };
 
-            ws.onerror = () => {
-                const badge = document.getElementById('conn-badge');
-                badge.className = "flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-xs font-bold text-amber-400";
-                document.getElementById('conn-text').innerText = "SSL Pair Needed";
-                document.getElementById('ssl-box').classList.remove('hidden');
-            };
+            ws.onerror = () => { isConnected = false; setUIConnected(false, true); };
+            ws.onclose = () => { isConnected = false; setUIConnected(false); };
+        }
 
-            ws.onclose = () => {
-                if (document.getElementById('conn-text').innerText === "Engine Connected") {
-                    const badge = document.getElementById('conn-badge');
-                    badge.className = "flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-rose-500/10 border border-rose-500/20 text-xs font-bold text-rose-400";
-                    document.getElementById('conn-text').innerText = "Disconnected";
-                }
-            };
+        function disconnectEngine() {
+            if (ws) { ws.close(); ws = null; }
+            isConnected = false;
+            setUIConnected(false);
+        }
+
+        function toggleEngineConnection() {
+            if (isConnected) disconnectEngine();
+            else connectEngine();
+        }
+
+        function setUIConnected(connected, sslError = false) {
+            const badge = document.getElementById('conn-badge');
+            const dot = document.getElementById('conn-dot');
+            const text = document.getElementById('conn-text');
+            const btn = document.getElementById('main-conn-btn');
+            const sslBox = document.getElementById('ssl-box');
+
+            if (connected) {
+                badge.className = "flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-xs font-bold text-emerald-400";
+                dot.className = "w-2 h-2 rounded-full bg-emerald-400";
+                text.innerText = "Engine Connected";
+                btn.innerText = "Disconnect";
+                btn.className = "px-4 py-1.5 rounded-full bg-rose-500 hover:bg-rose-400 text-white font-bold text-xs shadow transition active:scale-95";
+                sslBox.classList.add('hidden');
+            } else if (sslError) {
+                badge.className = "flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-xs font-bold text-amber-400";
+                dot.className = "w-2 h-2 rounded-full bg-amber-400 animate-pulse";
+                text.innerText = "SSL Pair Needed";
+                btn.innerText = "Retry";
+                btn.className = "px-4 py-1.5 rounded-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow transition active:scale-95";
+                sslBox.classList.remove('hidden');
+            } else {
+                badge.className = "flex items-center gap-2 px-3 py-1 rounded-full bg-slate-900 border border-slate-800 text-xs font-semibold text-slate-400";
+                dot.className = "w-2 h-2 rounded-full bg-slate-500";
+                text.innerText = "Disconnected";
+                btn.innerText = "Connect";
+                btn.className = "px-4 py-1.5 rounded-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs shadow transition active:scale-95";
+            }
         }
 
         function sendAction(cmd) {
@@ -248,7 +293,7 @@
             }
         }
 
-        window.onload = initConnection;
+        window.onload = connectEngine;
     </script>
 </body>
 </html>

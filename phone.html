@@ -22,104 +22,171 @@
     <audio id="remoteAudio" autoplay playsinline></audio>
 
     <!-- Top Status Header -->
-    <header class="p-3 bg-slate-900/90 backdrop-blur border-b border-slate-800 flex items-center justify-between z-10">
+    <header class="p-2.5 bg-slate-900/90 backdrop-blur border-b border-slate-800 flex items-center justify-between z-10">
         <div class="flex items-center gap-2">
             <span id="dot" class="w-2.5 h-2.5 rounded-full bg-slate-500"></span>
             <span id="status-text" class="text-xs font-bold text-slate-300">Disconnected</span>
         </div>
         <div class="flex items-center gap-2">
             <span id="batt" class="text-xs font-bold text-slate-400">🔋 100%</span>
-            <a id="certPair" href="#" target="_blank" class="hidden px-2 py-1 bg-amber-500 text-slate-950 text-[10px] font-bold rounded-lg">Allow SSL</a>
+            <a id="certPair" href="#" target="_blank" class="hidden px-2 py-0.5 bg-amber-500 text-slate-950 text-[10px] font-bold rounded-lg">Allow SSL</a>
             <button id="phone-conn-btn" onclick="togglePhoneConnection()" class="px-3 py-1 rounded-full bg-emerald-500 text-slate-950 font-bold text-xs shadow transition active:scale-95">
                 Connect
             </button>
         </div>
     </header>
 
-    <!-- Hardware Usage & DSP Status Bar -->
-    <div class="bg-slate-900/60 border-b border-slate-800/80 px-3 py-1.5 flex items-center justify-between text-[10px] font-bold z-10">
-        <div class="flex items-center gap-2">
-            <span id="badge-cam" class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-400">CAM: OFF</span>
-            <span id="badge-mic" class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-400">MIC: OFF</span>
-            <span class="px-1.5 py-0.5 rounded bg-sky-500/10 text-sky-400 border border-sky-500/20">DSP: AEC+NS</span>
-        </div>
-        <button onclick="toggleOLEDDimmer()" class="text-sky-400 hover:text-sky-300">🌑 OLED Save</button>
-    </div>
+    <!-- Specialized Use-Case Mode Selector -->
+    <nav class="bg-slate-900/60 border-b border-slate-800/80 px-2 py-1.5 grid grid-cols-4 gap-1 z-10 text-[11px] font-bold">
+        <button id="tab-av" onclick="switchMode('av')" class="py-1.5 rounded-xl bg-sky-500 text-slate-950 text-center transition">📷 Studio AV</button>
+        <button id="tab-input" onclick="switchMode('input')" class="py-1.5 rounded-xl bg-slate-900 text-slate-400 text-center transition">🖱️ Trackpad</button>
+        <button id="tab-present" onclick="switchMode('present')" class="py-1.5 rounded-xl bg-slate-900 text-slate-400 text-center transition">🎯 Deck</button>
+        <button id="tab-vault" onclick="switchMode('vault')" class="py-1.5 rounded-xl bg-slate-900 text-slate-400 text-center transition">📁 Files</button>
+    </nav>
 
-    <!-- Main Controller Surface -->
-    <main class="flex-1 flex flex-col p-3 space-y-2.5 relative">
+    <!-- Main Dynamic Workspace Viewports -->
+    <main class="flex-1 flex flex-col p-2.5 space-y-2 relative overflow-hidden">
         
-        <!-- Precision Touchpad -->
-        <div id="trackpad" class="flex-1 touch-surface rounded-3xl border border-slate-800 flex flex-col items-center justify-center text-slate-400 font-semibold text-xs active:border-sky-500/60 transition shadow-inner">
-            <div class="w-10 h-10 rounded-2xl bg-slate-800/70 flex items-center justify-center mb-1 text-sky-400 text-lg shadow">👆</div>
-            <span class="tracking-wide text-slate-300">Precision Touchpad Active</span>
-            <span class="text-[10px] text-slate-500 font-normal mt-0.5">Tap: L-Click • 2-Finger: Scroll • Hold: Drag</span>
-        </div>
-
-        <!-- Hotkey Productivity Deck -->
-        <div class="grid grid-cols-5 gap-1.5">
-            <button onclick="sendHotkey('ctrl_c')" class="bg-slate-900 active:bg-sky-500 active:text-slate-950 border border-slate-800 py-1.5 rounded-xl font-bold text-[10px] text-slate-300">Copy</button>
-            <button onclick="sendHotkey('ctrl_v')" class="bg-slate-900 active:bg-sky-500 active:text-slate-950 border border-slate-800 py-1.5 rounded-xl font-bold text-[10px] text-slate-300">Paste</button>
-            <button onclick="sendHotkey('ctrl_z')" class="bg-slate-900 active:bg-sky-500 active:text-slate-950 border border-slate-800 py-1.5 rounded-xl font-bold text-[10px] text-slate-300">Undo</button>
-            <button onclick="sendHotkey('alt_tab')" class="bg-slate-900 active:bg-sky-500 active:text-slate-950 border border-slate-800 py-1.5 rounded-xl font-bold text-[10px] text-slate-300">Alt+Tab</button>
-            <button onclick="sendHotkey('super')" class="bg-slate-900 active:bg-sky-500 active:text-slate-950 border border-slate-800 py-1.5 rounded-xl font-bold text-[10px] text-sky-400">Super</button>
-        </div>
-
-        <!-- Camera Sliders -->
-        <div class="bg-slate-900/60 p-2 rounded-2xl border border-slate-800 space-y-1.5">
-            <div class="flex items-center justify-between text-[10px] font-bold text-slate-400">
-                <span>🔍 Zoom: <span id="zoom-val" class="text-sky-400">1.0x</span></span>
-                <input type="range" id="zoom-slider" min="1" max="5" step="0.1" value="1" oninput="applyCameraZoom(this.value)" class="w-2/3 accent-sky-400">
+        <!-- USE CASE 1: STUDIO AV MODE -->
+        <div id="view-av" class="flex-1 flex flex-col space-y-2">
+            <!-- Hardware Preview / Status Card -->
+            <div class="flex-1 rounded-3xl border border-slate-800 bg-slate-900/40 p-4 flex flex-col items-center justify-center text-center space-y-3">
+                <div class="w-16 h-16 rounded-full bg-sky-500/10 border border-sky-500/20 flex items-center justify-center text-3xl">📹</div>
+                <div>
+                    <h3 class="text-sm font-bold text-slate-200">Studio AV Stream Active</h3>
+                    <p class="text-[11px] text-slate-400 mt-0.5">High-definition 720p 30FPS Virtual Webcam & DSP Mic</p>
+                </div>
+                <div class="flex gap-2">
+                    <span id="badge-cam" class="px-2 py-0.5 rounded-lg bg-slate-800 text-[10px] font-bold text-slate-400">CAM: OFF</span>
+                    <span id="badge-mic" class="px-2 py-0.5 rounded-lg bg-slate-800 text-[10px] font-bold text-slate-400">MIC: OFF</span>
+                    <span class="px-2 py-0.5 rounded-lg bg-emerald-500/10 text-[10px] font-bold text-emerald-400 border border-emerald-500/20">AEC+NS DSP</span>
+                </div>
             </div>
-            <div class="flex items-center justify-between text-[10px] font-bold text-slate-400">
-                <span>☀️ Exposure: <span id="exp-val" class="text-sky-400">0</span></span>
-                <input type="range" id="exp-slider" min="-2" max="2" step="0.5" value="0" oninput="applyCameraExposure(this.value)" class="w-2/3 accent-sky-400">
+
+            <!-- Camera Zoom & Exposure Sliders -->
+            <div class="bg-slate-900/60 p-2.5 rounded-2xl border border-slate-800 space-y-1.5">
+                <div class="flex items-center justify-between text-[10px] font-bold text-slate-400">
+                    <span>🔍 Optical Zoom: <span id="zoom-val" class="text-sky-400">1.0x</span></span>
+                    <input type="range" id="zoom-slider" min="1" max="5" step="0.1" value="1" oninput="applyCameraZoom(this.value)" class="w-2/3 accent-sky-400">
+                </div>
+                <div class="flex items-center justify-between text-[10px] font-bold text-slate-400">
+                    <span>☀️ Exposure Compensation: <span id="exp-val" class="text-sky-400">0</span></span>
+                    <input type="range" id="exp-slider" min="-2" max="2" step="0.5" value="0" oninput="applyCameraExposure(this.value)" class="w-2/3 accent-sky-400">
+                </div>
+            </div>
+
+            <!-- Hardware Action Matrix -->
+            <div class="grid grid-cols-4 gap-2">
+                <button onclick="toggleStream('video')" id="cam-btn" class="bg-slate-900 active:scale-95 border border-slate-800 py-3 rounded-2xl text-xs font-bold flex flex-col items-center gap-1 transition shadow-sm">
+                    <span>📷</span><span>Cam</span>
+                </button>
+                <button onclick="toggleStream('audio')" id="mic-btn" class="bg-slate-900 active:scale-95 border border-slate-800 py-3 rounded-2xl text-xs font-bold flex flex-col items-center gap-1 transition shadow-sm">
+                    <span>🎙️</span><span>Mic</span>
+                </button>
+                <button onclick="flipCamera()" class="bg-slate-900 active:scale-95 border border-slate-800 py-3 rounded-2xl text-xs font-bold flex flex-col items-center gap-1 transition shadow-sm">
+                    <span>🔄</span><span>Flip</span>
+                </button>
+                <button onclick="toggleTorch()" class="bg-slate-900 active:scale-95 border border-slate-800 py-3 rounded-2xl text-xs font-bold flex flex-col items-center gap-1 transition shadow-sm">
+                    <span>🔦</span><span>Torch</span>
+                </button>
             </div>
         </div>
 
-        <!-- Mouse Buttons & Drag Lock -->
-        <div class="grid grid-cols-3 gap-2 h-11">
-            <button id="btn-left" class="bg-slate-900 active:bg-sky-500 active:text-slate-950 border border-slate-800 rounded-2xl font-bold text-xs tracking-wider transition shadow-sm">LEFT</button>
-            <button id="btn-drag" onclick="toggleDragLock()" class="bg-slate-900 border border-slate-800 rounded-2xl font-bold text-xs text-amber-400 transition shadow-sm">DRAG LOCK</button>
-            <button id="btn-right" class="bg-slate-900 active:bg-sky-500 active:text-slate-950 border border-slate-800 rounded-2xl font-bold text-xs tracking-wider transition shadow-sm">RIGHT</button>
+        <!-- USE CASE 2: TRACKPAD & PRODUCTIVITY MODE -->
+        <div id="view-input" class="hidden flex-1 flex flex-col space-y-2">
+            <div id="trackpad" class="flex-1 touch-surface rounded-3xl border border-slate-800 flex flex-col items-center justify-center text-slate-400 font-semibold text-xs active:border-sky-500/60 transition shadow-inner">
+                <div class="w-10 h-10 rounded-2xl bg-slate-800/70 flex items-center justify-center mb-1 text-sky-400 text-lg shadow">👆</div>
+                <span class="tracking-wide text-slate-300">Precision Touchpad</span>
+                <span class="text-[10px] text-slate-500 font-normal mt-0.5">Tap: L-Click • 2-Finger: Scroll • Hold: Drag</span>
+            </div>
+
+            <!-- Productivity Hotkeys -->
+            <div class="grid grid-cols-5 gap-1.5">
+                <button onclick="sendHotkey('ctrl_c')" class="bg-slate-900 active:bg-sky-500 active:text-slate-950 border border-slate-800 py-2 rounded-xl font-bold text-[10px]">Copy</button>
+                <button onclick="sendHotkey('ctrl_v')" class="bg-slate-900 active:bg-sky-500 active:text-slate-950 border border-slate-800 py-2 rounded-xl font-bold text-[10px]">Paste</button>
+                <button onclick="sendHotkey('ctrl_z')" class="bg-slate-900 active:bg-sky-500 active:text-slate-950 border border-slate-800 py-2 rounded-xl font-bold text-[10px]">Undo</button>
+                <button onclick="sendHotkey('alt_tab')" class="bg-slate-900 active:bg-sky-500 active:text-slate-950 border border-slate-800 py-2 rounded-xl font-bold text-[10px]">Alt+Tab</button>
+                <button onclick="sendHotkey('super')" class="bg-slate-900 active:bg-sky-500 active:text-slate-950 border border-slate-800 py-2 rounded-xl font-bold text-[10px] text-sky-400">Super</button>
+            </div>
+
+            <!-- Mouse Clicks -->
+            <div class="grid grid-cols-3 gap-2 h-12">
+                <button id="btn-left" class="bg-slate-900 active:bg-sky-500 active:text-slate-950 border border-slate-800 rounded-2xl font-bold text-xs tracking-wider transition shadow-sm">LEFT</button>
+                <button id="btn-drag" onclick="toggleDragLock()" class="bg-slate-900 border border-slate-800 rounded-2xl font-bold text-xs text-amber-400 transition shadow-sm">DRAG LOCK</button>
+                <button id="btn-right" class="bg-slate-900 active:bg-sky-500 active:text-slate-950 border border-slate-800 rounded-2xl font-bold text-xs tracking-wider transition shadow-sm">RIGHT</button>
+            </div>
         </div>
 
-        <!-- Hardware Matrix -->
-        <div class="grid grid-cols-4 gap-2">
-            <button onclick="toggleStream('video')" id="cam-btn" class="bg-slate-900 active:scale-95 border border-slate-800 py-2.5 rounded-2xl text-xs font-bold flex flex-col items-center gap-1 transition shadow-sm">
-                <span>📷</span><span>Cam</span>
-            </button>
-            <button onclick="toggleStream('audio')" id="mic-btn" class="bg-slate-900 active:scale-95 border border-slate-800 py-2.5 rounded-2xl text-xs font-bold flex flex-col items-center gap-1 transition shadow-sm">
-                <span>🎙️</span><span>Mic</span>
-            </button>
-            <button onclick="flipCamera()" class="bg-slate-900 active:scale-95 border border-slate-800 py-2.5 rounded-2xl text-xs font-bold flex flex-col items-center gap-1 transition shadow-sm">
-                <span>🔄</span><span>Flip</span>
-            </button>
-            <button onclick="toggleTorch()" class="bg-slate-900 active:scale-95 border border-slate-800 py-2.5 rounded-2xl text-xs font-bold flex flex-col items-center gap-1 transition shadow-sm">
-                <span>🔦</span><span>Torch</span>
-            </button>
+        <!-- USE CASE 3: PRESENTATION & MEDIA DECK -->
+        <div id="view-present" class="hidden flex-1 flex flex-col justify-between space-y-3 p-2">
+            <div class="space-y-2">
+                <span class="text-xs font-bold uppercase tracking-wider text-slate-400">Slide Presentation Controls</span>
+                <div class="grid grid-cols-2 gap-2 h-24">
+                    <button onclick="sendHotkey('left')" class="bg-slate-900 active:bg-sky-500 active:text-slate-950 border border-slate-800 rounded-2xl font-black text-2xl flex flex-col items-center justify-center">
+                        <span>◀</span><span class="text-[10px] font-bold mt-1 text-slate-400">PREV SLIDE</span>
+                    </button>
+                    <button onclick="sendHotkey('right')" class="bg-slate-900 active:bg-sky-500 active:text-slate-950 border border-slate-800 rounded-2xl font-black text-2xl flex flex-col items-center justify-center">
+                        <span>▶</span><span class="text-[10px] font-bold mt-1 text-slate-400">NEXT SLIDE</span>
+                    </button>
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <button onclick="sendHotkey('f5')" class="bg-slate-900 border border-slate-800 py-3 rounded-2xl text-xs font-bold text-sky-400">▶ Start Presentation (F5)</button>
+                    <button onclick="sendHotkey('esc')" class="bg-slate-900 border border-slate-800 py-3 rounded-2xl text-xs font-bold text-rose-400">⏹ Exit Slides (Esc)</button>
+                </div>
+            </div>
+
+            <div class="space-y-2 border-t border-slate-800/80 pt-3">
+                <span class="text-xs font-bold uppercase tracking-wider text-slate-400">Media Master</span>
+                <div class="grid grid-cols-5 gap-1.5">
+                    <button onclick="sendMacro('prev')" class="bg-slate-900 border border-slate-800 py-3 rounded-xl font-bold">⏮</button>
+                    <button onclick="sendMacro('play_pause')" class="bg-sky-500 text-slate-950 py-3 rounded-xl font-black">⏯</button>
+                    <button onclick="sendMacro('next')" class="bg-slate-900 border border-slate-800 py-3 rounded-xl font-bold">⏭</button>
+                    <button onclick="sendMacro('vol_down')" class="bg-slate-900 border border-slate-800 py-3 rounded-xl font-bold">🔉</button>
+                    <button onclick="sendMacro('vol_up')" class="bg-slate-900 border border-slate-800 py-3 rounded-xl font-bold">🔊</button>
+                </div>
+            </div>
         </div>
 
-        <!-- OLED Blackout Overlay -->
+        <!-- USE CASE 4: FILE VAULT & LIVE CLIPBOARD -->
+        <div id="view-vault" class="hidden flex-1 flex flex-col space-y-3 p-1">
+            <div class="bg-slate-900/60 p-3 rounded-2xl border border-slate-800 space-y-2">
+                <label class="text-xs font-bold text-slate-300 block">Desktop Clipboard Sync</label>
+                <div class="flex gap-2">
+                    <input id="clip-input" type="text" placeholder="Type text to send to PC clipboard..." class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white">
+                    <button onclick="pushClipboard()" class="bg-sky-500 hover:bg-sky-400 text-slate-950 px-3 py-1.5 rounded-xl text-xs font-bold">Push</button>
+                </div>
+                <button onclick="pullClipboard()" class="w-full bg-slate-800 border border-slate-700 py-1.5 rounded-xl text-xs font-bold text-sky-400">📥 Pull PC Clipboard</button>
+            </div>
+
+            <div class="flex-1 bg-slate-900/40 rounded-2xl border border-slate-800 p-3 flex flex-col justify-between">
+                <div class="space-y-1">
+                    <label class="text-xs font-bold text-slate-300 block">Instant File Relay</label>
+                    <p class="text-[10px] text-slate-400">Files save to ~/Downloads/PhoneBridge_Transfers</p>
+                </div>
+                <div class="flex flex-col items-center justify-center p-4 border border-dashed border-slate-700 rounded-xl">
+                    <input type="file" id="fileInput" onchange="uploadSelectedFile()" class="text-xs file:mr-2 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-sky-500 file:text-slate-950">
+                    <div id="upload-status" class="text-[10px] font-bold text-slate-500 mt-2">Ready for transfer</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- OLED Battery Saver Overlay -->
         <div id="oled-overlay" onclick="toggleOLEDDimmer()" class="hidden absolute inset-0 oled-blackout z-50 flex flex-col items-center justify-center text-slate-800 text-xs font-mono select-none">
             <span>[ OLED SAVER ACTIVE • TAP ANYWHERE TO WAKE ]</span>
         </div>
     </main>
 
     <!-- Mobile Footer Ad -->
-    <footer class="p-2 bg-slate-950 border-t border-slate-900 z-10">
-        <div class="bg-slate-900/40 rounded-xl p-1.5 text-center border border-slate-800/50">
-            <div class="h-9 flex items-center justify-center text-[10px] text-slate-600 border border-dashed border-slate-800 rounded-lg">
+    <footer class="p-1.5 bg-slate-950 border-t border-slate-900 z-10">
+        <div class="bg-slate-900/40 rounded-xl p-1 text-center border border-slate-800/50">
+            <div class="h-8 flex items-center justify-center text-[10px] text-slate-600 border border-dashed border-slate-800 rounded-lg">
                 Mobile Clean Ad Placement (320x50)
             </div>
         </div>
     </footer>
 
     <script>
-        // Register PWA Service Worker for standalone installation
-        if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('./sw.js').catch(() => {});
-        }
+        if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => {});
 
         const urlParams = new URLSearchParams(window.location.search);
         let host = urlParams.get('host') || localStorage.getItem('phonebridge_host') || `${window.location.hostname}:8443`;
@@ -128,13 +195,26 @@
         let ws = null, pc = null, localStream = null;
         let currentFacingMode = "environment", torchActive = false;
         let wakeLock = null, isDragging = false, isPhoneConnected = false;
+        let activeMode = 'av';
 
         document.getElementById('certPair').href = `https://${host}/api/status`;
 
+        function switchMode(mode) {
+            activeMode = mode;
+            ['av', 'input', 'present', 'vault'].forEach(m => {
+                document.getElementById(`view-${m}`).classList.toggle('hidden', m !== mode);
+                const btn = document.getElementById(`tab-${m}`);
+                if (m === mode) {
+                    btn.className = "py-1.5 rounded-xl bg-sky-500 text-slate-950 text-center transition font-black";
+                } else {
+                    btn.className = "py-1.5 rounded-xl bg-slate-900 text-slate-400 text-center transition font-bold";
+                }
+            });
+            broadcastTelemetry();
+        }
+
         async function requestWakeLock() {
-            try {
-                if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen');
-            } catch (err) {}
+            try { if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); } catch (err) {}
         }
 
         function releaseWakeLock() {
@@ -142,8 +222,7 @@
         }
 
         function toggleOLEDDimmer() {
-            const overlay = document.getElementById('oled-overlay');
-            overlay.classList.toggle('hidden');
+            document.getElementById('oled-overlay').classList.toggle('hidden');
         }
 
         function startPhoneConnection() {
@@ -165,6 +244,9 @@
                         if (data.cmd === "toggle_cam") toggleStream('video');
                         if (data.cmd === "toggle_torch") toggleTorch();
                         if (data.cmd === "flip_cam") flipCamera();
+                    } else if (data.a === "clip_data") {
+                        document.getElementById('clip-input').value = data.text;
+                        alert("Clipboard pulled: " + data.text);
                     }
                 } catch(err) {}
             };
@@ -210,40 +292,31 @@
                 statusText.innerText = 'Disconnected';
                 connBtn.innerText = 'Connect';
                 connBtn.className = 'px-3 py-1 rounded-full bg-emerald-500 text-slate-950 font-bold text-xs shadow transition active:scale-95';
-                document.getElementById('badge-cam').className = "px-1.5 py-0.5 rounded bg-slate-800 text-slate-400";
+                document.getElementById('badge-cam').className = "px-2 py-0.5 rounded-lg bg-slate-800 text-[10px] font-bold text-slate-400";
                 document.getElementById('badge-cam').innerText = "CAM: OFF";
-                document.getElementById('badge-mic').className = "px-1.5 py-0.5 rounded bg-slate-800 text-slate-400";
+                document.getElementById('badge-mic').className = "px-2 py-0.5 rounded-lg bg-slate-800 text-[10px] font-bold text-slate-400";
                 document.getElementById('badge-mic').innerText = "MIC: OFF";
             }
         }
 
         async function startAVStream() {
             try {
-                // DSP Pipeline: Native Echo Cancellation + Noise Suppression + Auto Gain
                 localStream = await navigator.mediaDevices.getUserMedia({
                     video: { facingMode: currentFacingMode, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
-                    audio: {
-                        echoCancellation: true,
-                        noiseSuppression: true,
-                        autoGainControl: true,
-                        channelCount: 1,
-                        sampleRate: 48000
-                    }
+                    audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1, sampleRate: 48000 }
                 });
 
                 pc = new RTCPeerConnection({ iceServers: [] });
                 localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
 
-                document.getElementById('badge-cam').className = "px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20";
+                document.getElementById('badge-cam').className = "px-2 py-0.5 rounded-lg bg-emerald-500/10 text-emerald-400 text-[10px] font-bold border border-emerald-500/20";
                 document.getElementById('badge-cam').innerText = "CAM: ON";
-                document.getElementById('badge-mic').className = "px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20";
+                document.getElementById('badge-mic').className = "px-2 py-0.5 rounded-lg bg-emerald-500/10 text-emerald-400 text-[10px] font-bold border border-emerald-500/20";
                 document.getElementById('badge-mic').innerText = "MIC: ON";
-                broadcastHardwareTelemetry(true, true);
+                broadcastTelemetry();
 
                 pc.ontrack = (event) => {
-                    if (event.track.kind === "audio") {
-                        document.getElementById("remoteAudio").srcObject = event.streams[0];
-                    }
+                    if (event.track.kind === "audio") document.getElementById("remoteAudio").srcObject = event.streams[0];
                 };
 
                 const offer = await pc.createOffer();
@@ -257,16 +330,17 @@
 
                 const answer = await response.json();
                 await pc.setRemoteDescription(new RTCSessionDescription(answer));
-            } catch (err) {
-                console.error("WebRTC AV Error:", err);
-            }
+            } catch (err) { console.error("WebRTC AV Error:", err); }
         }
 
         function sendHotkey(combo) {
             if (navigator.vibrate) navigator.vibrate(15);
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ a: "hotkey", k: combo }));
-            }
+            if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ a: "hotkey", k: combo }));
+        }
+
+        function sendMacro(cmd) {
+            if (navigator.vibrate) navigator.vibrate(15);
+            if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ a: "macro", cmd: cmd }));
         }
 
         async function applyCameraZoom(val) {
@@ -293,26 +367,23 @@
             if (track) {
                 track.enabled = !track.enabled;
                 const btn = document.getElementById(kind === 'video' ? 'cam-btn' : 'mic-btn');
-                btn.className = track.enabled ? 'bg-slate-900 border border-slate-800 py-2.5 rounded-2xl text-xs font-bold flex flex-col items-center gap-1 shadow-sm' : 'bg-rose-900/40 border border-rose-700 py-2.5 rounded-2xl text-xs font-bold text-rose-300 flex flex-col items-center gap-1 shadow-sm';
+                btn.className = track.enabled ? 'bg-slate-900 border border-slate-800 py-3 rounded-2xl text-xs font-bold flex flex-col items-center gap-1 shadow-sm' : 'bg-rose-900/40 border border-rose-700 py-3 rounded-2xl text-xs font-bold text-rose-300 flex flex-col items-center gap-1 shadow-sm';
                 
                 const badge = document.getElementById(kind === 'video' ? 'badge-cam' : 'badge-mic');
                 badge.innerText = `${kind.toUpperCase()}: ${track.enabled ? 'ON' : 'OFF'}`;
-                badge.className = track.enabled ? "px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" : "px-1.5 py-0.5 rounded bg-slate-800 text-slate-400";
-                
-                broadcastHardwareTelemetry(
-                    localStream.getVideoTracks().some(t => t.enabled),
-                    localStream.getAudioTracks().some(t => t.enabled)
-                );
+                badge.className = track.enabled ? "px-2 py-0.5 rounded-lg bg-emerald-500/10 text-emerald-400 text-[10px] font-bold border border-emerald-500/20" : "px-2 py-0.5 rounded-lg bg-slate-800 text-[10px] font-bold text-slate-400";
+                broadcastTelemetry();
             }
         }
 
-        function broadcastHardwareTelemetry(camActive, micActive) {
+        function broadcastTelemetry() {
             if (ws && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({
                     a: "telemetry",
                     battery: parseInt(document.getElementById('batt').innerText.replace(/\D/g, '')) || 100,
-                    cam_active: camActive,
-                    mic_active: micActive,
+                    mode: activeMode,
+                    cam_active: localStream ? localStream.getVideoTracks().some(t => t.enabled) : false,
+                    mic_active: localStream ? localStream.getAudioTracks().some(t => t.enabled) : false,
                     device: "Phone Remote Pro"
                 }));
             }
@@ -348,6 +419,7 @@
             }
         }
 
+        // Optimized Trackpad Touch Listeners
         let lastX = 0, lastY = 0, touchStartTime = 0;
         const pad = document.getElementById('trackpad');
 
@@ -391,22 +463,46 @@
             ws && ws.send(JSON.stringify({ a: "c", b: "r" }));
         };
 
+        function pushClipboard() {
+            const txt = document.getElementById('clip-input').value;
+            if (txt && ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ a: "set_clip", text: txt }));
+                alert("Pushed to PC clipboard!");
+            }
+        }
+
+        function pullClipboard() {
+            if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ a: "get_clip" }));
+        }
+
+        async function uploadSelectedFile() {
+            const input = document.getElementById('fileInput');
+            if (!input.files.length) return;
+            const statusEl = document.getElementById('upload-status');
+            statusEl.innerText = "Uploading...";
+            statusEl.className = "text-[10px] font-bold text-sky-400 mt-2";
+
+            const formData = new FormData();
+            formData.append('file', input.files[0]);
+
+            try {
+                await fetch(`https://${host}/api/upload`, { method: 'POST', body: formData });
+                statusEl.innerText = "✓ Uploaded successfully!";
+                statusEl.className = "text-[10px] font-bold text-emerald-400 mt-2";
+                input.value = '';
+            } catch (err) {
+                statusEl.innerText = "✗ Upload failed";
+                statusEl.className = "text-[10px] font-bold text-rose-400 mt-2";
+            }
+        }
+
         function startBatteryReporting() {
             if ('getBattery' in navigator) {
                 navigator.getBattery().then(batt => {
                     const send = () => {
                         const level = Math.round(batt.level * 100);
                         document.getElementById('batt').innerText = `🔋 ${level}%`;
-                        if (ws && ws.readyState === WebSocket.OPEN) {
-                            ws.send(JSON.stringify({
-                                a: "telemetry",
-                                battery: level,
-                                charging: batt.charging,
-                                device: "Phone Remote Pro",
-                                cam_active: localStream ? localStream.getVideoTracks().some(t => t.enabled) : false,
-                                mic_active: localStream ? localStream.getAudioTracks().some(t => t.enabled) : false
-                            }));
-                        }
+                        broadcastTelemetry();
                     };
                     send();
                     batt.onlevelchange = send;

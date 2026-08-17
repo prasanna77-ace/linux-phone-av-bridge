@@ -13,6 +13,7 @@ IS_WINDOWS = platform.system() == "Windows"
 if not IS_WINDOWS:
     os.environ.setdefault("DISPLAY", ":0")
 
+# Kernel-level uinput acceleration for sub-millisecond input response
 uinput_device = None
 if not IS_WINDOWS:
     try:
@@ -24,10 +25,11 @@ if not IS_WINDOWS:
                 e.BTN_LEFT, e.BTN_RIGHT, e.BTN_MIDDLE,
                 e.KEY_PLAYPAUSE, e.KEY_NEXTSONG, e.KEY_PREVIOUSSONG,
                 e.KEY_VOLUMEUP, e.KEY_VOLUMEDOWN, e.KEY_MUTE,
-                e.KEY_LEFTCTRL, e.KEY_LEFTALT, e.KEY_TAB, e.KEY_Z, e.KEY_C, e.KEY_V, e.KEY_LEFTMETA
+                e.KEY_LEFTCTRL, e.KEY_LEFTALT, e.KEY_TAB, e.KEY_Z, e.KEY_C, e.KEY_V,
+                e.KEY_LEFTMETA, e.KEY_F5, e.KEY_ESC, e.KEY_LEFT, e.KEY_RIGHT, e.KEY_UP, e.KEY_DOWN
             ]
         }
-        uinput_device = UInput(cap, name="PhoneBridge-Virtual-Mouse")
+        uinput_device = UInput(cap, name="PhoneBridge-Ultra-Device")
     except Exception:
         uinput_device = None
 
@@ -39,13 +41,13 @@ try:
 except Exception:
     pynput_mouse, pynput_keyboard = None, None
 
-executor = ThreadPoolExecutor(max_workers=4)
+executor = ThreadPoolExecutor(max_workers=3)
 pcs = set()
 vcam = None
 vcam_lock = asyncio.Lock()
 active_tasks = set()
 ws_clients = set()
-mobile_telemetry = {"battery": "100%", "charging": False, "device": "Mobile", "cam_active": False, "mic_active": False}
+mobile_telemetry = {"battery": "100%", "charging": False, "device": "Mobile", "mode": "av", "cam_active": False, "mic_active": False}
 
 TRANSFER_DIR = os.path.expanduser("~/Downloads/PhoneBridge_Transfers")
 os.makedirs(TRANSFER_DIR, exist_ok=True)
@@ -84,11 +86,11 @@ def set_sys_clipboard(text):
     try: pyperclip.copy(text)
     except Exception: pass
 
-def make_standby_frame(w=VCAM_WIDTH, h=VCAM_HEIGHT, text="PhoneWebcam (Standby)"):
+def make_standby_frame(w=VCAM_WIDTH, h=VCAM_HEIGHT, text="PhoneBridge Standby"):
     img = np.zeros((h, w, 3), dtype=np.uint8)
-    img[:] = (15, 23, 42)
-    cv2.putText(img, text, (int(w*0.25), int(h*0.48)), cv2.FONT_HERSHEY_SIMPLEX, 1.1, (56, 189, 248), 2, cv2.LINE_AA)
-    cv2.putText(img, "Ready for WebRTC AV Stream", (int(w*0.30), int(h*0.56)), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (148, 163, 184), 1, cv2.LINE_AA)
+    img[:] = (10, 15, 29)
+    cv2.putText(img, text, (int(w*0.28), int(h*0.48)), cv2.FONT_HERSHEY_SIMPLEX, 1.1, (56, 189, 248), 2, cv2.LINE_AA)
+    cv2.putText(img, "Ready for WebRTC AV Transmission", (int(w*0.30), int(h*0.56)), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (148, 163, 184), 1, cv2.LINE_AA)
     return img
 
 class NonBlockingDesktopAudio(AudioStreamTrack):
@@ -173,7 +175,7 @@ class NonBlockingDesktopAudio(AudioStreamTrack):
             except Exception: pass
 
 async def get_status(request):
-    files = [f for f in os.listdir(TRANSFER_DIR) if os.path.isfile(os.path.join(TRANSFER_DIR, f))]
+    files = [{"name": f, "size": os.path.getsize(os.path.join(TRANSFER_DIR, f))} for f in os.listdir(TRANSFER_DIR) if os.path.isfile(os.path.join(TRANSFER_DIR, f))]
     return web.json_response({
         "status": "ready",
         "lan_ip": LAN_IP,
@@ -220,8 +222,14 @@ def inject_hotkey(combo):
             pynput_keyboard.press(Key.alt); pynput_keyboard.press(Key.tab); pynput_keyboard.release(Key.tab); pynput_keyboard.release(Key.alt)
         elif combo == "super":
             pynput_keyboard.press(Key.cmd); pynput_keyboard.release(Key.cmd)
-        elif combo == "term_kill":
-            pynput_keyboard.press(Key.ctrl); pynput_keyboard.press('c'); pynput_keyboard.release('c'); pynput_keyboard.release(Key.ctrl)
+        elif combo == "f5":
+            pynput_keyboard.press(Key.f5); pynput_keyboard.release(Key.f5)
+        elif combo == "esc":
+            pynput_keyboard.press(Key.esc); pynput_keyboard.release(Key.esc)
+        elif combo == "left":
+            pynput_keyboard.press(Key.left); pynput_keyboard.release(Key.left)
+        elif combo == "right":
+            pynput_keyboard.press(Key.right); pynput_keyboard.release(Key.right)
 
 async def websocket_input_handler(request):
     global mobile_telemetry
@@ -258,7 +266,6 @@ async def websocket_input_handler(request):
 
                 elif act == "hotkey":
                     inject_hotkey(data.get("k"))
-
                 elif act == "t" and pynput_keyboard:
                     pynput_keyboard.type(data.get("txt", ""))
                 elif act == "macro":
@@ -272,6 +279,11 @@ async def websocket_input_handler(request):
                         if IS_WINDOWS: subprocess.Popen("rundll32.exe user32.dll,LockWorkStation", shell=True)
                         else: subprocess.Popen("loginctl lock-session 2>/dev/null || xflock4 2>/dev/null || true", shell=True)
 
+                elif act == "set_clip":
+                    set_sys_clipboard(data.get("text", ""))
+                elif act == "get_clip":
+                    await ws.send_json({"a": "clip_data", "text": get_sys_clipboard()})
+
                 elif act == "phone_control":
                     for client in ws_clients:
                         if client != ws and not client.closed:
@@ -282,6 +294,7 @@ async def websocket_input_handler(request):
                         "battery": f"{data.get('battery', 100)}%",
                         "charging": data.get("charging", False),
                         "device": data.get("device", "Mobile"),
+                        "mode": data.get("mode", "av"),
                         "cam_active": data.get("cam_active", False),
                         "mic_active": data.get("mic_active", False)
                     })
@@ -294,6 +307,7 @@ async def websocket_input_handler(request):
 
 async def upload_file(request):
     reader = await request.multipart()
+    uploaded_files = []
     while True:
         part = await reader.next()
         if part is None: break
@@ -306,7 +320,8 @@ async def upload_file(request):
                     chunk = await part.read_chunk(size=1024*1024)
                     if not chunk: break
                     f.write(chunk)
-    return web.json_response({"status": "uploaded", "dir": TRANSFER_DIR})
+            uploaded_files.append(safe_name)
+    return web.json_response({"status": "uploaded", "files": uploaded_files, "dir": TRANSFER_DIR})
 
 async def list_files(request):
     files = [{"name": f, "size": os.path.getsize(os.path.join(TRANSFER_DIR, f))} for f in os.listdir(TRANSFER_DIR) if os.path.isfile(os.path.join(TRANSFER_DIR, f))]
@@ -455,7 +470,7 @@ if __name__ == "__main__":
     qr.make()
 
     print("\n" + "═"*72)
-    print("      PHONE-TO-PC PRO SUITE (DSP AUDIO + PWA + HOTKEY DECK)")
+    print("      PHONE-TO-PC PRO ENGINE (LIGHTWEIGHT MULTI-MODAL SUITE)")
     print("═"*72)
     print(f"\n👉 PC Dashboard URL:\n   {DASHBOARD_DIRECT_URL}\n")
     print("👉 Scan with Phone Camera:")

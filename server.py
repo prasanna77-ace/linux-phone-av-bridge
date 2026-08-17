@@ -7,19 +7,33 @@ import numpy as np
 import av
 import qrcode
 import pyperclip
-from pynput.mouse import Controller as MouseController, Button
-from pynput.keyboard import Controller as KeyboardController, Key
 
 IS_WINDOWS = platform.system() == "Windows"
 
 if not IS_WINDOWS:
     os.environ.setdefault("DISPLAY", ":0")
 
+# Input Controller: Attempt kernel-level evdev (uinput) on Linux, fallback to pynput
+uinput_device = None
+if not IS_WINDOWS:
+    try:
+        import evdev
+        from evdev import UInput, ecodes as e
+        cap = {
+            e.EV_REL: [e.REL_X, e.REL_Y, e.REL_WHEEL],
+            e.EV_KEY: [e.BTN_LEFT, e.BTN_RIGHT, e.BTN_MIDDLE, e.KEY_PLAYPAUSE, e.KEY_NEXTSONG, e.KEY_PREVIOUSSONG, e.KEY_VOLUMEUP, e.KEY_VOLUMEDOWN, e.KEY_MUTE]
+        }
+        uinput_device = UInput(cap, name="PhoneBridge-Virtual-Mouse")
+    except Exception:
+        uinput_device = None
+
+from pynput.mouse import Controller as MouseController, Button
+from pynput.keyboard import Controller as KeyboardController, Key
 try:
-    mouse = MouseController()
-    keyboard = KeyboardController()
+    pynput_mouse = MouseController()
+    pynput_keyboard = KeyboardController()
 except Exception:
-    mouse, keyboard = None, None
+    pynput_mouse, pynput_keyboard = None, None
 
 executor = ThreadPoolExecutor(max_workers=4)
 pcs = set()
@@ -27,7 +41,7 @@ vcam = None
 vcam_lock = asyncio.Lock()
 active_tasks = set()
 ws_clients = set()
-mobile_telemetry = {"battery": "100%", "charging": False, "device": "Mobile"}
+mobile_telemetry = {"battery": "100%", "charging": False, "device": "Mobile", "cam_active": False, "mic_active": False}
 
 TRANSFER_DIR = os.path.expanduser("~/Downloads/PhoneBridge_Transfers")
 os.makedirs(TRANSFER_DIR, exist_ok=True)
@@ -59,16 +73,12 @@ DASHBOARD_DIRECT_URL = f"{GITHUB_PAGES_BASE}/?host={LAN_IP}:8443"
 PHONE_DIRECT_URL = f"{GITHUB_PAGES_BASE}/phone.html?host={LAN_IP}:8443"
 
 def get_sys_clipboard():
-    try:
-        return pyperclip.paste()
-    except Exception:
-        return ""
+    try: return pyperclip.paste()
+    except Exception: return ""
 
 def set_sys_clipboard(text):
-    try:
-        pyperclip.copy(text)
-    except Exception:
-        pass
+    try: pyperclip.copy(text)
+    except Exception: pass
 
 def make_standby_frame(w=VCAM_WIDTH, h=VCAM_HEIGHT, text="PhoneWebcam (Standby)"):
     img = np.zeros((h, w, 3), dtype=np.uint8)
@@ -78,7 +88,6 @@ def make_standby_frame(w=VCAM_WIDTH, h=VCAM_HEIGHT, text="PhoneWebcam (Standby)"
     return img
 
 class NonBlockingDesktopAudio(AudioStreamTrack):
-    """Captures desktop audio output (speakers/monitor) and streams to phone."""
     def __init__(self):
         super().__init__()
         self.rate = 48000
@@ -121,7 +130,7 @@ class NonBlockingDesktopAudio(AudioStreamTrack):
                     frames_per_buffer=self.samples_per_frame
                 )
             except Exception as e:
-                print(f"[PC Audio Capture Notice] {e}")
+                print(f"[Audio Monitor Notice] {e}")
 
     async def recv(self):
         if self.proc is None and self.pyaudio_stream is None:
@@ -170,8 +179,30 @@ async def get_status(request):
         "save_path": TRANSFER_DIR,
         "telemetry": mobile_telemetry,
         "clipboard": get_sys_clipboard(),
-        "platform": platform.system()
+        "platform": platform.system(),
+        "input_backend": "kernel_uinput" if uinput_device else "pynput"
     })
+
+def inject_mouse_rel(dx, dy):
+    if uinput_device:
+        from evdev import ecodes as e
+        uinput_device.write(e.EV_REL, e.REL_X, int(dx))
+        uinput_device.write(e.EV_REL, e.REL_Y, int(dy))
+        uinput_device.syn()
+    elif pynput_mouse:
+        pynput_mouse.move(dx, dy)
+
+def inject_mouse_click(btn_str):
+    if uinput_device:
+        from evdev import ecodes as e
+        btn = e.BTN_LEFT if btn_str == "l" else (e.BTN_RIGHT if btn_str == "r" else e.BTN_MIDDLE)
+        uinput_device.write(e.EV_KEY, btn, 1)
+        uinput_device.syn()
+        uinput_device.write(e.EV_KEY, btn, 0)
+        uinput_device.syn()
+    elif pynput_mouse:
+        btn = Button.left if btn_str == "l" else (Button.right if btn_str == "r" else Button.middle)
+        pynput_mouse.click(btn)
 
 async def websocket_input_handler(request):
     global mobile_telemetry
@@ -185,75 +216,53 @@ async def websocket_input_handler(request):
                 data = json.loads(msg.data)
                 act = data.get("a")
 
-                # Trackpad & Gyroscope
-                if act == "mm" and mouse:
+                if act == "mm":
                     sens = data.get("sens", 1.5)
-                    mouse.move(data.get("dx", 0) * sens, data.get("dy", 0) * sens)
-                elif act == "gyro" and mouse:
-                    dx = data.get("gx", 0) * data.get("sens", 2.2)
-                    dy = data.get("gy", 0) * data.get("sens", 2.2)
-                    mouse.move(dx, dy)
-                elif act == "c" and mouse:
-                    btn = Button.left if data.get("b") == "l" else (Button.right if data.get("b") == "r" else Button.middle)
-                    mouse.click(btn)
-                elif act == "sc" and mouse:
-                    mouse.scroll(0, data.get("dy", 0))
-                elif act == "drag_start" and mouse:
-                    mouse.press(Button.left)
-                elif act == "drag_end" and mouse:
-                    mouse.release(Button.left)
+                    inject_mouse_rel(data.get("dx", 0) * sens, data.get("dy", 0) * sens)
+                elif act == "gyro":
+                    sens = data.get("sens", 2.2)
+                    inject_mouse_rel(data.get("gx", 0) * sens, data.get("gy", 0) * sens)
+                elif act == "c":
+                    inject_mouse_click(data.get("b", "l"))
+                elif act == "sc":
+                    dy = int(data.get("dy", 0))
+                    if uinput_device:
+                        from evdev import ecodes as e
+                        uinput_device.write(e.EV_REL, e.REL_WHEEL, dy)
+                        uinput_device.syn()
+                    elif pynput_mouse:
+                        pynput_mouse.scroll(0, dy)
+                elif act == "drag_start" and pynput_mouse:
+                    pynput_mouse.press(Button.left)
+                elif act == "drag_end" and pynput_mouse:
+                    pynput_mouse.release(Button.left)
 
-                # Keyboard & Macros
-                elif act == "t" and keyboard:
-                    keyboard.type(data.get("txt", ""))
-                elif act == "k" and keyboard:
-                    k = data.get("k")
-                    key_map = {
-                        "Backspace": Key.backspace, "Enter": Key.enter, "Space": Key.space,
-                        "Tab": Key.tab, "Escape": Key.esc, "Up": Key.up, "Down": Key.down,
-                        "Left": Key.left, "Right": Key.right
-                    }
-                    if k in key_map:
-                        keyboard.press(key_map[k])
-                        keyboard.release(key_map[k])
+                elif act == "t" and pynput_keyboard:
+                    pynput_keyboard.type(data.get("txt", ""))
                 elif act == "macro":
                     m = data.get("cmd")
-                    if m == "play_pause": keyboard.press(Key.media_play_pause); keyboard.release(Key.media_play_pause)
-                    elif m == "next": keyboard.press(Key.media_next); keyboard.release(Key.media_next)
-                    elif m == "prev": keyboard.press(Key.media_previous); keyboard.release(Key.media_previous)
-                    elif m == "vol_up": keyboard.press(Key.media_volume_up); keyboard.release(Key.media_volume_up)
-                    elif m == "vol_down": keyboard.press(Key.media_volume_down); keyboard.release(Key.media_volume_down)
-                    elif m == "mute": keyboard.press(Key.media_volume_mute); keyboard.release(Key.media_volume_mute)
+                    if m == "play_pause" and pynput_keyboard: pynput_keyboard.press(Key.media_play_pause); pynput_keyboard.release(Key.media_play_pause)
+                    elif m == "next" and pynput_keyboard: pynput_keyboard.press(Key.media_next); pynput_keyboard.release(Key.media_next)
+                    elif m == "prev" and pynput_keyboard: pynput_keyboard.press(Key.media_previous); pynput_keyboard.release(Key.media_previous)
+                    elif m == "vol_up" and pynput_keyboard: pynput_keyboard.press(Key.media_volume_up); pynput_keyboard.release(Key.media_volume_up)
+                    elif m == "vol_down" and pynput_keyboard: pynput_keyboard.press(Key.media_volume_down); pynput_keyboard.release(Key.media_volume_down)
                     elif m == "lock":
                         if IS_WINDOWS: subprocess.Popen("rundll32.exe user32.dll,LockWorkStation", shell=True)
                         else: subprocess.Popen("loginctl lock-session 2>/dev/null || xflock4 2>/dev/null || true", shell=True)
-                    elif m == "screenshot":
-                        from PIL import ImageGrab
-                        ss = ImageGrab.grab()
-                        ss.save(os.path.join(TRANSFER_DIR, f"screenshot_{int(time.time())}.png"))
-                    elif m == "terminal":
-                        if IS_WINDOWS: subprocess.Popen("start cmd.exe", shell=True)
-                        else: subprocess.Popen("x-terminal-emulator 2>/dev/null || xterm 2>/dev/null || true", shell=True)
 
-                # Clipboard Sync
-                elif act == "set_clip":
-                    set_sys_clipboard(data.get("text", ""))
-                elif act == "get_clip":
-                    await ws.send_json({"a": "clip_data", "text": get_sys_clipboard()})
-
-                # Broadcast actions (Camera switch, torch, etc.)
                 elif act == "phone_control":
                     for client in ws_clients:
                         if client != ws and not client.closed:
                             await client.send_json(data)
 
-                # Telemetry
                 elif act == "telemetry":
-                    mobile_telemetry = {
+                    mobile_telemetry.update({
                         "battery": f"{data.get('battery', 100)}%",
                         "charging": data.get("charging", False),
-                        "device": data.get("device", "Mobile")
-                    }
+                        "device": data.get("device", "Mobile"),
+                        "cam_active": data.get("cam_active", False),
+                        "mic_active": data.get("mic_active", False)
+                    })
                     for client in ws_clients:
                         if client != ws and not client.closed:
                             await client.send_json({"a": "telemetry_update", **data})
@@ -269,8 +278,7 @@ async def upload_file(request):
         if part.filename:
             safe_name = os.path.basename(part.filename)
             filepath = os.path.abspath(os.path.join(TRANSFER_DIR, safe_name))
-            if not filepath.startswith(os.path.abspath(TRANSFER_DIR)): 
-                continue
+            if not filepath.startswith(os.path.abspath(TRANSFER_DIR)): continue
             with open(filepath, 'wb', buffering=4*1024*1024) as f:
                 while True:
                     chunk = await part.read_chunk(size=1024*1024)
@@ -279,11 +287,7 @@ async def upload_file(request):
     return web.json_response({"status": "uploaded", "dir": TRANSFER_DIR})
 
 async def list_files(request):
-    files = [
-        {"name": f, "size": os.path.getsize(os.path.join(TRANSFER_DIR, f))} 
-        for f in os.listdir(TRANSFER_DIR) 
-        if os.path.isfile(os.path.join(TRANSFER_DIR, f))
-    ]
+    files = [{"name": f, "size": os.path.getsize(os.path.join(TRANSFER_DIR, f))} for f in os.listdir(TRANSFER_DIR) if os.path.isfile(os.path.join(TRANSFER_DIR, f))]
     return web.json_response(files)
 
 async def download_file(request):
@@ -352,22 +356,15 @@ async def handle_video(track, pc):
             frame = await track.recv()
             img = await loop.run_in_executor(executor, process_frame, frame, VCAM_WIDTH, VCAM_HEIGHT)
             async with vcam_lock:
-                if vcam is not None: 
-                    vcam.send(img)
-        except Exception: 
-            break
+                if vcam is not None: vcam.send(img)
+        except Exception: break
 
 async def handle_mic(track, pc):
-    """Receives smartphone microphone audio and sends to virtual mic."""
     resampler = av.AudioResampler(format="s16", layout="mono", rate=48000)
     loop = asyncio.get_running_loop()
     
     if not IS_WINDOWS:
-        cmd = [
-            "pacat", "--playback", "-d", "PhoneMicEngine", 
-            "--rate=48000", "--channels=1", "--format=s16le", 
-            "--raw", "--latency-msec=10", "--process-time-msec=5"
-        ]
+        cmd = ["pacat", "--playback", "-d", "PhoneMicEngine", "--rate=48000", "--channels=1", "--format=s16le", "--raw", "--latency-msec=10", "--process-time-msec=5"]
         proc = await asyncio.create_subprocess_exec(*cmd, stdin=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
         try:
             while pc.connectionState not in ["failed", "closed"]:
@@ -377,10 +374,8 @@ async def handle_mic(track, pc):
                     try:
                         proc.stdin.write(raw_bytes)
                         await proc.stdin.drain()
-                    except (BrokenPipeError, ConnectionResetError): 
-                        break
-        except Exception: 
-            pass
+                    except (BrokenPipeError, ConnectionResetError): break
+        except Exception: pass
         finally:
             try: proc.terminate()
             except Exception: pass
@@ -394,12 +389,9 @@ async def handle_mic(track, pc):
                 for resampled in resampler.resample(frame):
                     raw_bytes = resampled.to_ndarray().tobytes()
                     await loop.run_in_executor(executor, stream.write, raw_bytes)
-        except Exception: 
-            pass
+        except Exception: pass
         finally:
-            stream.stop_stream()
-            stream.close()
-            p.terminate()
+            stream.stop_stream(); stream.close(); p.terminate()
 
 async def init_virtual_camera():
     global vcam
@@ -433,28 +425,23 @@ app.router.add_get("/api/files/{filename}", download_file)
 app.router.add_post("/offer", offer)
 
 if __name__ == "__main__":
-    try:
-        pyperclip.copy(DASHBOARD_DIRECT_URL)
-    except Exception:
-        pass
+    try: pyperclip.copy(DASHBOARD_DIRECT_URL)
+    except Exception: pass
 
     qr = qrcode.QRCode()
     qr.add_data(PHONE_DIRECT_URL)
     qr.make()
 
     print("\n" + "═"*72)
-    print("      PHONE-TO-PC FULL THROTTLE AV SUITE (ZERO CONFIG)")
+    print("      PHONE-TO-PC PRO ENGINE (KERNEL INPUT + HARDWARE MATRIX)")
     print("═"*72)
-    print(f"\n👉 PC Dashboard URL:")
-    print(f"   {DASHBOARD_DIRECT_URL}\n")
+    print(f"\n👉 PC Dashboard URL:\n   {DASHBOARD_DIRECT_URL}\n")
     print("👉 Scan with Phone Camera:")
     qr.print_ascii(invert=True)
     print("═"*72 + "\n")
 
-    try:
-        webbrowser.open(DASHBOARD_DIRECT_URL)
-    except Exception:
-        pass
+    try: webbrowser.open(DASHBOARD_DIRECT_URL)
+    except Exception: pass
 
     loop = asyncio.get_event_loop()
     loop.run_until_complete(init_virtual_camera())

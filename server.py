@@ -74,10 +74,11 @@ def make_standby_frame(w=VCAM_WIDTH, h=VCAM_HEIGHT, text="PhoneWebcam (Standby)"
     img = np.zeros((h, w, 3), dtype=np.uint8)
     img[:] = (15, 23, 42)
     cv2.putText(img, text, (int(w*0.25), int(h*0.48)), cv2.FONT_HERSHEY_SIMPLEX, 1.1, (56, 189, 248), 2, cv2.LINE_AA)
-    cv2.putText(img, "Ready for connection via WebRTC", (int(w*0.28), int(h*0.56)), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (148, 163, 184), 1, cv2.LINE_AA)
+    cv2.putText(img, "Ready for WebRTC AV Stream", (int(w*0.30), int(h*0.56)), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (148, 163, 184), 1, cv2.LINE_AA)
     return img
 
 class NonBlockingDesktopAudio(AudioStreamTrack):
+    """Captures desktop audio output (speakers/monitor) and streams to phone."""
     def __init__(self):
         super().__init__()
         self.rate = 48000
@@ -120,7 +121,7 @@ class NonBlockingDesktopAudio(AudioStreamTrack):
                     frames_per_buffer=self.samples_per_frame
                 )
             except Exception as e:
-                print(f"[Audio Warning] {e}")
+                print(f"[PC Audio Capture Notice] {e}")
 
     async def recv(self):
         if self.proc is None and self.pyaudio_stream is None:
@@ -184,6 +185,7 @@ async def websocket_input_handler(request):
                 data = json.loads(msg.data)
                 act = data.get("a")
 
+                # Trackpad & Gyroscope
                 if act == "mm" and mouse:
                     sens = data.get("sens", 1.5)
                     mouse.move(data.get("dx", 0) * sens, data.get("dy", 0) * sens)
@@ -196,7 +198,12 @@ async def websocket_input_handler(request):
                     mouse.click(btn)
                 elif act == "sc" and mouse:
                     mouse.scroll(0, data.get("dy", 0))
+                elif act == "drag_start" and mouse:
+                    mouse.press(Button.left)
+                elif act == "drag_end" and mouse:
+                    mouse.release(Button.left)
 
+                # Keyboard & Macros
                 elif act == "t" and keyboard:
                     keyboard.type(data.get("txt", ""))
                 elif act == "k" and keyboard:
@@ -209,7 +216,6 @@ async def websocket_input_handler(request):
                     if k in key_map:
                         keyboard.press(key_map[k])
                         keyboard.release(key_map[k])
-
                 elif act == "macro":
                     m = data.get("cmd")
                     if m == "play_pause": keyboard.press(Key.media_play_pause); keyboard.release(Key.media_play_pause)
@@ -229,22 +235,28 @@ async def websocket_input_handler(request):
                         if IS_WINDOWS: subprocess.Popen("start cmd.exe", shell=True)
                         else: subprocess.Popen("x-terminal-emulator 2>/dev/null || xterm 2>/dev/null || true", shell=True)
 
+                # Clipboard Sync
                 elif act == "set_clip":
                     set_sys_clipboard(data.get("text", ""))
                 elif act == "get_clip":
                     await ws.send_json({"a": "clip_data", "text": get_sys_clipboard()})
 
+                # Broadcast actions (Camera switch, torch, etc.)
                 elif act == "phone_control":
                     for client in ws_clients:
                         if client != ws and not client.closed:
                             await client.send_json(data)
 
+                # Telemetry
                 elif act == "telemetry":
                     mobile_telemetry = {
                         "battery": f"{data.get('battery', 100)}%",
                         "charging": data.get("charging", False),
                         "device": data.get("device", "Mobile")
                     }
+                    for client in ws_clients:
+                        if client != ws and not client.closed:
+                            await client.send_json({"a": "telemetry_update", **data})
     finally:
         ws_clients.discard(ws)
     return ws
@@ -284,7 +296,7 @@ async def download_file(request):
 async def offer(request):
     params = await request.json()
     offer = RTCSessionDescription(sdp=params["sdp"], type=params["type"])
-    enable_pc_to_phone = params.get("enable_pc_to_phone", False)
+    enable_pc_to_phone = params.get("enable_pc_to_phone", True)
 
     pc = RTCPeerConnection(configuration=RTCConfiguration(iceServers=[]))
     pcs.add(pc)
@@ -346,6 +358,7 @@ async def handle_video(track, pc):
             break
 
 async def handle_mic(track, pc):
+    """Receives smartphone microphone audio and sends to virtual mic."""
     resampler = av.AudioResampler(format="s16", layout="mono", rate=48000)
     loop = asyncio.get_running_loop()
     
@@ -429,16 +442,15 @@ if __name__ == "__main__":
     qr.add_data(PHONE_DIRECT_URL)
     qr.make()
 
-    print("\n" + "═"*70)
-    print("       PHONE-TO-PC BRIDGE ENGINE (READY)")
-    print("═"*70)
-    print(f"\n👉 Direct Dashboard Link (Auto-Opening):")
+    print("\n" + "═"*72)
+    print("      PHONE-TO-PC FULL THROTTLE AV SUITE (ZERO CONFIG)")
+    print("═"*72)
+    print(f"\n👉 PC Dashboard URL:")
     print(f"   {DASHBOARD_DIRECT_URL}\n")
     print("👉 Scan with Phone Camera:")
     qr.print_ascii(invert=True)
-    print("═"*70 + "\n")
+    print("═"*72 + "\n")
 
-    # Automatically open the dashboard in user's browser
     try:
         webbrowser.open(DASHBOARD_DIRECT_URL)
     except Exception:

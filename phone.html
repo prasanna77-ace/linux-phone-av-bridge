@@ -1,53 +1,72 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Phone AV & Input Controller</title>
+    <title>Phone Remote Controller</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Plus Jakarta Sans', sans-serif; }
+        .touch-surface { background: radial-gradient(circle at center, rgba(30, 41, 59, 0.7) 0%, rgba(15, 23, 42, 0.95) 100%); }
+    </style>
 </head>
-<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col justify-between select-none touch-none">
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col justify-between select-none touch-none overflow-hidden">
 
-    <header class="p-3 bg-slate-900 border-b border-slate-800 flex items-center justify-between">
+    <!-- Header Status Bar -->
+    <header class="p-3 bg-slate-900/90 backdrop-blur border-b border-slate-800 flex items-center justify-between">
         <div class="flex items-center gap-2">
-            <span id="dot" class="w-2.5 h-2.5 rounded-full bg-amber-400"></span>
-            <span id="status-text" class="text-xs font-semibold text-slate-300">Connecting...</span>
+            <span id="dot" class="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse"></span>
+            <span id="status-text" class="text-xs font-bold text-slate-300">Connecting...</span>
         </div>
-        <div class="flex items-center gap-3 text-xs text-slate-400">
-            <span id="batt">🔋 --%</span>
-            <a id="certPair" href="#" target="_blank" class="hidden text-sky-400 underline font-semibold">Allow SSL</a>
+        <div class="flex items-center gap-3">
+            <span id="batt" class="text-xs font-bold text-slate-400">🔋 100%</span>
+            <a id="certPair" href="#" target="_blank" class="hidden px-2.5 py-1 bg-amber-500 text-slate-950 text-[11px] font-bold rounded-lg">Allow SSL</a>
         </div>
     </header>
 
+    <!-- Main Touchpad Surface -->
     <main class="flex-1 flex flex-col p-3 space-y-3">
-        <div id="trackpad" class="flex-1 bg-slate-900/80 rounded-2xl border border-slate-800 flex flex-col items-center justify-center text-slate-500 font-medium text-xs active:border-sky-500/50 transition">
-            <span>Touch & Drag: Move Cursor</span>
-            <span class="text-[10px] text-slate-600 mt-1">Tap: Left Click | 2-Finger Tap: Right Click</span>
+        <div id="trackpad" class="flex-1 touch-surface rounded-2xl border border-slate-800 flex flex-col items-center justify-center text-slate-400 font-semibold text-xs active:border-sky-500/60 transition shadow-inner">
+            <div class="w-12 h-12 rounded-full bg-slate-800/60 flex items-center justify-center mb-2 text-sky-400 text-lg shadow-sm">👆</div>
+            <span class="tracking-wide">Touchpad Active</span>
+            <span class="text-[10px] text-slate-500 font-normal mt-1">Tap: L-Click • 2-Finger: Scroll</span>
         </div>
 
+        <!-- Mouse Buttons -->
         <div class="grid grid-cols-2 gap-2 h-14">
-            <button id="btn-left" class="bg-slate-900 active:bg-sky-500 active:text-slate-950 border border-slate-800 rounded-xl font-bold text-sm">L-CLICK</button>
-            <button id="btn-right" class="bg-slate-900 active:bg-sky-500 active:text-slate-950 border border-slate-800 rounded-xl font-bold text-sm">R-CLICK</button>
+            <button id="btn-left" class="bg-slate-900 active:bg-sky-500 active:text-slate-950 border border-slate-800 rounded-xl font-bold text-xs tracking-wider transition">LEFT CLICK</button>
+            <button id="btn-right" class="bg-slate-900 active:bg-sky-500 active:text-slate-950 border border-slate-800 rounded-xl font-bold text-xs tracking-wider transition">RIGHT CLICK</button>
         </div>
 
+        <!-- Camera & Mic Hardware Controls -->
         <div class="grid grid-cols-4 gap-2">
-            <button onclick="toggleStream('video')" id="cam-btn" class="bg-slate-900 border border-slate-800 py-2.5 rounded-xl text-xs font-semibold">📷 Cam</button>
-            <button onclick="toggleStream('audio')" id="mic-btn" class="bg-slate-900 border border-slate-800 py-2.5 rounded-xl text-xs font-semibold">🎙️ Mic</button>
-            <button onclick="flipCamera()" class="bg-slate-900 border border-slate-800 py-2.5 rounded-xl text-xs font-semibold">🔄 Flip</button>
-            <button onclick="toggleTorch()" class="bg-slate-900 border border-slate-800 py-2.5 rounded-xl text-xs font-semibold">🔦 Torch</button>
+            <button onclick="toggleStream('video')" id="cam-btn" class="bg-slate-900 active:scale-95 border border-slate-800 py-3 rounded-xl text-xs font-bold flex flex-col items-center gap-1 transition">
+                <span>📷</span><span>Cam</span>
+            </button>
+            <button onclick="toggleStream('audio')" id="mic-btn" class="bg-slate-900 active:scale-95 border border-slate-800 py-3 rounded-xl text-xs font-bold flex flex-col items-center gap-1 transition">
+                <span>🎙️</span><span>Mic</span>
+            </button>
+            <button onclick="flipCamera()" class="bg-slate-900 active:scale-95 border border-slate-800 py-3 rounded-xl text-xs font-bold flex flex-col items-center gap-1 transition">
+                <span>🔄</span><span>Flip</span>
+            </button>
+            <button onclick="toggleTorch()" class="bg-slate-900 active:scale-95 border border-slate-800 py-3 rounded-xl text-xs font-bold flex flex-col items-center gap-1 transition">
+                <span>🔦</span><span>Torch</span>
+            </button>
         </div>
 
-        <div class="bg-slate-900/60 p-2.5 rounded-xl border border-slate-800/80 flex items-center justify-between">
-            <label class="text-xs text-slate-400 font-medium">Send File to PC</label>
-            <input type="file" id="fileInput" onchange="uploadSelectedFile()" class="text-xs file:mr-2 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-sky-500 file:text-slate-950">
+        <!-- File Transfer Strip -->
+        <div class="bg-slate-900/60 p-2 rounded-xl border border-slate-800/80 flex items-center justify-between">
+            <span class="text-[11px] font-semibold text-slate-400 ml-1">Send to PC:</span>
+            <input type="file" id="fileInput" onchange="uploadSelectedFile()" class="text-xs file:mr-2 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-[11px] file:font-bold file:bg-sky-500 file:text-slate-950">
         </div>
     </main>
 
+    <!-- Mobile Footer Ad -->
     <footer class="p-2 bg-slate-950 border-t border-slate-900">
-        <div class="bg-slate-900/40 rounded-lg p-2 text-center border border-slate-800/50">
-            <span class="text-[9px] uppercase tracking-widest text-slate-600 block">Sponsor</span>
-            <div class="h-10 flex items-center justify-center text-[10px] text-slate-600 border border-dashed border-slate-800/80 rounded">
-                Mobile Banner Ad Unit (320x50)
+        <div class="bg-slate-900/40 rounded-xl p-1.5 text-center border border-slate-800/50">
+            <div class="h-10 flex items-center justify-center text-[10px] text-slate-600 border border-dashed border-slate-800 rounded-lg">
+                Clean Sponsor Banner (320x50)
             </div>
         </div>
     </footer>
@@ -57,11 +76,8 @@
         let host = urlParams.get('host') || localStorage.getItem('phonebridge_host') || `${window.location.hostname}:8443`;
         localStorage.setItem('phonebridge_host', host);
 
-        let ws = null;
-        let pc = null;
-        let localStream = null;
-        let currentFacingMode = "environment";
-        let torchActive = false;
+        let ws = null, pc = null, localStream = null;
+        let currentFacingMode = "environment", torchActive = false;
 
         document.getElementById('certPair').href = `https://${host}/api/status`;
 
@@ -70,7 +86,7 @@
 
             ws.onopen = () => {
                 document.getElementById('dot').className = 'w-2.5 h-2.5 rounded-full bg-emerald-400';
-                document.getElementById('status-text').innerText = 'Connected';
+                document.getElementById('status-text').innerText = 'Bridge Connected';
                 document.getElementById('certPair').classList.add('hidden');
                 startBatteryReporting();
                 startAVStream();
@@ -88,8 +104,8 @@
             };
 
             ws.onerror = () => {
-                document.getElementById('dot').className = 'w-2.5 h-2.5 rounded-full bg-amber-400';
-                document.getElementById('status-text').innerText = 'Allow SSL Needed';
+                document.getElementById('dot').className = 'w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse';
+                document.getElementById('status-text').innerText = 'SSL Pair Needed';
                 document.getElementById('certPair').classList.remove('hidden');
             };
 
@@ -132,7 +148,7 @@
             if (track) {
                 track.enabled = !track.enabled;
                 const btn = document.getElementById(kind === 'video' ? 'cam-btn' : 'mic-btn');
-                btn.className = track.enabled ? 'bg-slate-900 border border-slate-800 py-2.5 rounded-xl text-xs font-semibold' : 'bg-rose-900/60 border border-rose-700 py-2.5 rounded-xl text-xs font-semibold text-rose-200';
+                btn.className = track.enabled ? 'bg-slate-900 border border-slate-800 py-3 rounded-xl text-xs font-bold flex flex-col items-center gap-1' : 'bg-rose-900/40 border border-rose-700 py-3 rounded-xl text-xs font-bold text-rose-300 flex flex-col items-center gap-1';
             }
         }
 
@@ -198,7 +214,7 @@
 
             try {
                 await fetch(`https://${host}/api/upload`, { method: 'POST', body: formData });
-                alert('File sent to PC!');
+                alert('File uploaded to PC!');
                 input.value = '';
             } catch (err) {
                 alert('Upload failed.');

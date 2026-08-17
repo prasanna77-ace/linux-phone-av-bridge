@@ -1,4 +1,4 @@
-import ssl, asyncio, socket, subprocess, os, fractions, cv2, json, time, platform
+import ssl, asyncio, socket, subprocess, os, fractions, cv2, json, time, platform, webbrowser
 from concurrent.futures import ThreadPoolExecutor
 from aiohttp import web, WSMsgType
 from aiortc import RTCPeerConnection, RTCSessionDescription, RTCConfiguration, AudioStreamTrack
@@ -420,25 +420,29 @@ app.router.add_get("/api/files/{filename}", download_file)
 app.router.add_post("/offer", offer)
 
 if __name__ == "__main__":
-    # Copy auto-configured link directly to desktop clipboard
     try:
         pyperclip.copy(DASHBOARD_DIRECT_URL)
-        clipboard_notice = "(COPIED TO CLIPBOARD - JUST PASTE IN BROWSER)"
     except Exception:
-        clipboard_notice = ""
+        pass
 
     qr = qrcode.QRCode()
     qr.add_data(PHONE_DIRECT_URL)
     qr.make()
 
-    print("\n" + "="*70)
-    print("       PHONE-TO-PC BRIDGE ENGINE (ZERO CONFIG)")
-    print("="*70)
-    print(f"\n👉 PC Dashboard URL {clipboard_notice}:")
+    print("\n" + "═"*70)
+    print("       PHONE-TO-PC BRIDGE ENGINE (READY)")
+    print("═"*70)
+    print(f"\n👉 Direct Dashboard Link (Auto-Opening):")
     print(f"   {DASHBOARD_DIRECT_URL}\n")
-    print("👉 Phone Direct Access (Scan with Phone):")
+    print("👉 Scan with Phone Camera:")
     qr.print_ascii(invert=True)
-    print("="*70 + "\n")
+    print("═"*70 + "\n")
+
+    # Automatically open the dashboard in user's browser
+    try:
+        webbrowser.open(DASHBOARD_DIRECT_URL)
+    except Exception:
+        pass
 
     loop = asyncio.get_event_loop()
     loop.run_until_complete(init_virtual_camera())

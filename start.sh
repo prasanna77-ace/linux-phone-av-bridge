@@ -1,29 +1,35 @@
-#!/usr/bin/env bash
+#!/bin/bash
 set -e
 
-DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 cd "$DIR"
 
-# 1. Hardware & Kernel Nodes
-sudo modprobe snd-aloop 2>/dev/null || true
-sudo modprobe v4l2loopback video_nr=10 card_label="PhoneWebcam" exclusive_caps=1 2>/dev/null || true
-sudo chmod 666 /dev/video10 2>/dev/null || true
+echo "======================================================"
+echo "    PHONE-TO-PC AV BRIDGE — ONE-CLICK LAUNCHER"
+echo "======================================================"
 
-# 2. Virtual Microphone Pipeline
-pactl list short modules | grep -E "VirtualMic|PhoneMic" | awk '{print $1}' | xargs -r -n1 pactl unload-module 2>/dev/null || true
-pactl load-module module-null-sink sink_name=PhoneMicEngine sink_properties='device.description="PhoneMicEngine_Internal" media.class="Audio/Sink"' >/dev/null
-pactl load-module module-remap-source master=PhoneMicEngine.monitor source_name=Phone_Microphone source_properties='device.description="Phone_Microphone" device.class="sound" device.form_factor="microphone" device.icon_name="audio-input-microphone" device.intended_roles="input" node.description="Phone_Microphone"' >/dev/null
-pactl set-sink-mute PhoneMicEngine 0 2>/dev/null || true
-pactl set-source-mute Phone_Microphone 0 2>/dev/null || true
-pactl set-default-source Phone_Microphone 2>/dev/null || true
+# 1. Setup virtual video loopback on Linux if not present
+if [ "$(uname)" = "Linux" ]; then
+    if ! lsmod | grep -q v4l2loopback; then
+        echo "[*] Initializing virtual camera module (v4l2loopback)..."
+        sudo modprobe v4l2loopback devices=1 video_nr=10 card_label="PhoneWebcam" exclusive_caps=1 2>/dev/null || true
+    fi
+fi
 
-# 3. Certificates
-if [ ! -f "cert.pem" ] || [ ! -f "key.pem" ]; then
+# 2. Auto-generate SSL certificates if missing
+if [ ! -f cert.pem ] || [ ! -f key.pem ]; then
+    echo "[*] Creating local secure SSL certificate..."
     openssl req -x509 -newkey rsa:2048 -keyout key.pem -out cert.pem -days 365 -nodes -subj "/CN=PhoneBridge" 2>/dev/null
 fi
 
-# 4. Auto-Open Desktop Browser to Dashboard
-(sleep 1.5 && (google-chrome https://localhost:8443/ 2>/dev/null || chromium-browser https://localhost:8443/ 2>/dev/null || xdg-open https://localhost:8443/ 2>/dev/null)) &
+# 3. Create virtualenv and install dependencies automatically
+if [ ! -d "venv" ]; then
+    echo "[*] Setting up Python environment (first-time only)..."
+    python3 -m venv venv
+    ./venv/bin/pip install --upgrade pip --quiet
+    ./venv/bin/pip install aiohttp aiortc pyvirtualcam opencv-python av qrcode pyperclip pynput numpy --quiet
+fi
 
-# 5. Run Server
+# 4. Launch engine
+echo "[✓] Starting server..."
 ./venv/bin/python3 server.py

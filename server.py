@@ -5,6 +5,7 @@ from aiortc import RTCPeerConnection, RTCSessionDescription, RTCConfiguration, A
 import pyvirtualcam
 import numpy as np
 import av
+import qrcode
 import pyperclip
 from pynput.mouse import Controller as MouseController, Button
 from pynput.keyboard import Controller as KeyboardController, Key
@@ -36,6 +37,8 @@ VCAM_WIDTH = 1280
 VCAM_HEIGHT = 720
 VCAM_FPS = 30
 
+GITHUB_PAGES_BASE = "https://prasanna77-ace.github.io/linux-phone-av-bridge"
+
 def get_lan_ip():
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
@@ -52,6 +55,8 @@ def get_lan_ip():
     return ip
 
 LAN_IP = get_lan_ip()
+DASHBOARD_DIRECT_URL = f"{GITHUB_PAGES_BASE}/?host={LAN_IP}:8443"
+PHONE_DIRECT_URL = f"{GITHUB_PAGES_BASE}/phone.html?host={LAN_IP}:8443"
 
 def get_sys_clipboard():
     try:
@@ -115,7 +120,7 @@ class NonBlockingDesktopAudio(AudioStreamTrack):
                     frames_per_buffer=self.samples_per_frame
                 )
             except Exception as e:
-                print(f"[Windows Audio Warning] WASAPI Loopback init failed: {e}")
+                print(f"[Audio Warning] {e}")
 
     async def recv(self):
         if self.proc is None and self.pyaudio_stream is None:
@@ -158,6 +163,7 @@ async def get_status(request):
     return web.json_response({
         "status": "ready",
         "lan_ip": LAN_IP,
+        "host": f"{LAN_IP}:8443",
         "active_connections": len(pcs) + len(ws_clients),
         "files_count": len(files),
         "save_path": TRANSFER_DIR,
@@ -391,7 +397,7 @@ async def init_virtual_camera():
             vcam = pyvirtualcam.Camera(width=VCAM_WIDTH, height=VCAM_HEIGHT, fps=VCAM_FPS, device=VCAM_DEVICE, fmt=pyvirtualcam.PixelFormat.BGR)
         vcam.send(make_standby_frame())
     except Exception as e:
-        print(f"[VirtualCam Init Notice] Camera node initialization bypassed: {e}")
+        print(f"[VirtualCam Notice] {e}")
 
 @web.middleware
 async def cors_middleware(request, handler):
@@ -414,13 +420,18 @@ app.router.add_get("/api/files/{filename}", download_file)
 app.router.add_post("/offer", offer)
 
 if __name__ == "__main__":
-    print("\n" + "="*65)
-    print(f"   PHONE-TO-PC HEADLESS ENGINE ({platform.system().upper()})")
-    print("="*65)
-    print(f" Local Engine IP: https://{LAN_IP}:8443")
-    print(f" File Storage:    {TRANSFER_DIR}")
-    print(f" Virtual Cam:     {VCAM_DEVICE if not IS_WINDOWS else 'OBS Virtual Cam'}")
-    print("="*65 + "\n")
+    qr = qrcode.QRCode()
+    qr.add_data(PHONE_DIRECT_URL)
+    qr.make()
+
+    print("\n" + "="*68)
+    print("   PHONE-TO-PC BRIDGE ENGINE (ZERO CONFIG)")
+    print("="*68)
+    print(f"\n👉 Open Dashboard (Auto-Configured):")
+    print(f"   {DASHBOARD_DIRECT_URL}\n")
+    print("👉 Or Scan Directly on Phone:")
+    qr.print_ascii(invert=True)
+    print("="*68 + "\n")
 
     loop = asyncio.get_event_loop()
     loop.run_until_complete(init_virtual_camera())

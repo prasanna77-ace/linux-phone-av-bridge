@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Phone-to-PC WebRTC Bridge</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col items-center justify-between p-4 selection:bg-sky-500 selection:text-slate-950">
+
+    <header class="w-full max-w-2xl text-center py-6">
+        <h1 class="text-3xl font-extrabold text-sky-400 tracking-tight">Phone-to-PC AV Bridge</h1>
+        <p class="text-sm text-slate-400 mt-2">Zero-latency smartphone webcam, microphone, and remote control system</p>
+    </header>
+
+    <main class="w-full max-w-2xl bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-6">
+        <div>
+            <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Desktop Engine IP:Port</label>
+            <div class="flex gap-2">
+                <input id="serverIp" type="text" placeholder="192.168.1.100:8443" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-sky-500">
+                <button onclick="saveAndPair()" class="bg-sky-500 hover:bg-sky-400 px-5 py-2.5 rounded-xl text-sm font-bold text-slate-950 transition">Pair & Connect</button>
+            </div>
+            <div class="mt-2 flex items-center justify-between">
+                <span id="status" class="text-xs text-amber-400 font-medium">Status: Disconnected</span>
+                <a id="certLink" href="#" target="_blank" class="hidden text-xs text-sky-400 hover:underline">One-Time SSL Pairing ↗</a>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 items-center bg-slate-950/60 p-4 rounded-xl border border-slate-800/80">
+            <div class="flex flex-col items-center justify-center p-2">
+                <div id="qrcode" class="bg-white p-2 rounded-lg shadow"></div>
+                <span class="text-[11px] text-slate-400 mt-2 font-medium">Scan on phone to connect</span>
+            </div>
+            <div class="space-y-3">
+                <button onclick="sendAction('toggle_cam')" class="w-full bg-slate-800 hover:bg-slate-700 py-2.5 px-4 rounded-xl text-sm font-semibold border border-slate-700 transition flex items-center justify-center gap-2">📷 Toggle Camera</button>
+                <button onclick="sendAction('toggle_torch')" class="w-full bg-slate-800 hover:bg-slate-700 py-2.5 px-4 rounded-xl text-sm font-semibold border border-slate-700 transition flex items-center justify-center gap-2">🔦 Toggle Flashlight</button>
+                <button onclick="sendAction('flip_cam')" class="w-full bg-slate-800 hover:bg-slate-700 py-2.5 px-4 rounded-xl text-sm font-semibold border border-slate-700 transition flex items-center justify-center gap-2">🔄 Switch Front/Back</button>
+            </div>
+        </div>
+
+        <div class="border-t border-slate-800/80 pt-5 space-y-3 text-xs text-slate-400">
+            <h3 class="font-bold text-slate-200 uppercase tracking-wider">Quick Setup Guide</h3>
+            <ol class="list-decimal list-inside space-y-1.5 leading-relaxed">
+                <li>Run <code class="bg-slate-800 px-1.5 py-0.5 rounded text-sky-300">python3 server.py</code> on your computer.</li>
+                <li>Enter the terminal's IP above and click <b>Pair & Connect</b>.</li>
+                <li>If the status shows an SSL warning, click <b>One-Time SSL Pairing</b> and accept the certificate.</li>
+                <li>Scan the QR code with your mobile browser to start streaming video, audio, and trackpad gestures.</li>
+            </ol>
+        </div>
+    </main>
+
+    <footer class="w-full max-w-2xl my-6">
+        <div class="bg-slate-900/40 border border-slate-800/60 rounded-xl p-3 text-center">
+            <span class="text-[10px] uppercase tracking-widest text-slate-500 block mb-1">Sponsored Advertisement</span>
+            <div class="min-h-[90px] flex items-center justify-center bg-slate-950/60 rounded-lg border border-dashed border-slate-800 text-xs text-slate-600">
+                Clean Banner Ad Placement (EthicalAds / Google AdSense 728x90)
+            </div>
+        </div>
+        <p class="text-center text-[11px] text-slate-600 mt-3">Open-source WebRTC AV & Input Relay System</p>
+    </footer>
+
+    <script>
+        let ws = null;
+        let qr = null;
+
+        function updateQR(url) {
+            const qrContainer = document.getElementById("qrcode");
+            qrContainer.innerHTML = "";
+            qr = new QRCode(qrContainer, {
+                text: url,
+                width: 120,
+                height: 120,
+                colorDark: "#0f172a",
+                colorLight: "#ffffff",
+                correctLevel: QRCode.CorrectLevel.M
+            });
+        }
+
+        function saveAndPair() {
+            const ip = document.getElementById('serverIp').value.trim();
+            if (!ip) return alert('Enter local IP:Port (e.g. 192.168.1.50:8443)');
+
+            const phoneUrl = `https://${window.location.host}${window.location.pathname}phone.html?host=${encodeURIComponent(ip)}`;
+            updateQR(phoneUrl);
+
+            const certLink = document.getElementById('certLink');
+            certLink.href = `https://${ip}/api/status`;
+            certLink.classList.remove('hidden');
+
+            if (ws) ws.close();
+            ws = new WebSocket(`wss://${ip}/ws/input`);
+
+            ws.onopen = () => {
+                const s = document.getElementById('status');
+                s.innerText = 'Status: Connected to Desktop Engine';
+                s.className = 'text-xs text-emerald-400 font-medium';
+            };
+
+            ws.onerror = () => {
+                const s = document.getElementById('status');
+                s.innerText = 'Status: Pair Required (Click SSL Pairing link)';
+                s.className = 'text-xs text-amber-400 font-medium';
+            };
+
+            ws.onclose = () => {
+                const s = document.getElementById('status');
+                s.innerText = 'Status: Disconnected';
+                s.className = 'text-xs text-rose-400 font-medium';
+            };
+        }
+
+        function sendAction(cmd) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ a: "phone_control", cmd: cmd }));
+            } else {
+                alert("Connect to desktop engine first.");
+            }
+        }
+
+        window.onload = () => {
+            updateQR(window.location.href);
+        };
+    </script>
+</body>
+</html>

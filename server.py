@@ -420,18 +420,25 @@ app.router.add_get("/api/files/{filename}", download_file)
 app.router.add_post("/offer", offer)
 
 if __name__ == "__main__":
+    # Copy auto-configured link directly to desktop clipboard
+    try:
+        pyperclip.copy(DASHBOARD_DIRECT_URL)
+        clipboard_notice = "(COPIED TO CLIPBOARD - JUST PASTE IN BROWSER)"
+    except Exception:
+        clipboard_notice = ""
+
     qr = qrcode.QRCode()
     qr.add_data(PHONE_DIRECT_URL)
     qr.make()
 
-    print("\n" + "="*68)
-    print("   PHONE-TO-PC BRIDGE ENGINE (ZERO CONFIG)")
-    print("="*68)
-    print(f"\n👉 Open Dashboard (Auto-Configured):")
+    print("\n" + "="*70)
+    print("       PHONE-TO-PC BRIDGE ENGINE (ZERO CONFIG)")
+    print("="*70)
+    print(f"\n👉 PC Dashboard URL {clipboard_notice}:")
     print(f"   {DASHBOARD_DIRECT_URL}\n")
-    print("👉 Or Scan Directly on Phone:")
+    print("👉 Phone Direct Access (Scan with Phone):")
     qr.print_ascii(invert=True)
-    print("="*68 + "\n")
+    print("="*70 + "\n")
 
     loop = asyncio.get_event_loop()
     loop.run_until_complete(init_virtual_camera())

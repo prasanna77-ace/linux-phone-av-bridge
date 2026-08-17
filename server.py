@@ -13,7 +13,6 @@ IS_WINDOWS = platform.system() == "Windows"
 if not IS_WINDOWS:
     os.environ.setdefault("DISPLAY", ":0")
 
-# Kernel-level uinput acceleration
 uinput_device = None
 if not IS_WINDOWS:
     try:
@@ -47,11 +46,10 @@ vcam = None
 vcam_lock = asyncio.Lock()
 active_tasks = set()
 ws_clients = set()
-latest_video_frame = None
 
 mobile_telemetry = {
     "battery": "100%", "charging": False, "device": "Mobile",
-    "mode": "av", "cam_active": False, "mic_active": False, "fps": 30, "rtt": 0
+    "mode": "av", "cam_active": False, "mic_active": False
 }
 
 TRANSFER_DIR = os.path.expanduser("~/Downloads/PhoneBridge_Transfers")
@@ -61,30 +59,32 @@ VCAM_WIDTH = 1280
 VCAM_HEIGHT = 720
 VCAM_FPS = 30
 
-def get_best_lan_ip():
-    candidates = []
+def get_all_lan_ips():
+    """Extracts all physical and wireless IPv4 addresses."""
+    ip_list = []
     try:
+        # Standard UDP socket probe
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(('1.1.1.1', 80))
-        candidates.append(s.getsockname()[0])
+        primary = s.getsockname()[0]
+        ip_list.append(primary)
         s.close()
-    except Exception: pass
+    except Exception:
+        pass
 
     try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(('192.168.1.1', 80))
-        candidates.append(s.getsockname()[0])
-        s.close()
-    except Exception: pass
+        # Linux hostname query
+        out = subprocess.check_output("hostname -I", shell=True).decode().split()
+        for ip in out:
+            if ip not in ip_list and not ip.startswith("127.") and not ip.startswith("172.17.") and not ip.startswith("docker"):
+                ip_list.append(ip)
+    except Exception:
+        pass
 
-    for ip in candidates:
-        if not ip.startswith("127."):
-            return ip
-    return "127.0.0.1"
+    return ip_list if ip_list else ["127.0.0.1"]
 
-LAN_IP = get_best_lan_ip()
-DIRECT_LOCAL_DASHBOARD = f"https://{LAN_IP}:8443/"
-DIRECT_PHONE_URL = f"https://{LAN_IP}:8443/phone.html"
+ALL_IPS = get_all_lan_ips()
+PRIMARY_IP = ALL_IPS[0]
 
 def get_sys_clipboard():
     try: return pyperclip.paste()
@@ -94,7 +94,7 @@ def set_sys_clipboard(text):
     try: pyperclip.copy(text)
     except Exception: pass
 
-def make_standby_frame(w=VCAM_WIDTH, h=VCAM_HEIGHT, text="PhoneBridge Master Standby"):
+def make_standby_frame(w=VCAM_WIDTH, h=VCAM_HEIGHT, text="PhoneBridge Standby"):
     img = np.zeros((h, w, 3), dtype=np.uint8)
     img[:] = (10, 15, 29)
     cv2.putText(img, text, (int(w*0.24), int(h*0.48)), cv2.FONT_HERSHEY_SIMPLEX, 1.1, (56, 189, 248), 2, cv2.LINE_AA)
@@ -205,8 +205,9 @@ async def get_status(request):
     files = [{"name": f, "size": os.path.getsize(os.path.join(TRANSFER_DIR, f))} for f in os.listdir(TRANSFER_DIR) if os.path.isfile(os.path.join(TRANSFER_DIR, f))]
     return web.json_response({
         "status": "ready",
-        "lan_ip": LAN_IP,
-        "host": f"{LAN_IP}:8443",
+        "lan_ip": PRIMARY_IP,
+        "all_ips": ALL_IPS,
+        "host": f"{PRIMARY_IP}:8443",
         "active_connections": len(pcs) + len(ws_clients),
         "files": files,
         "save_path": TRANSFER_DIR,
@@ -413,14 +414,13 @@ def process_frame(frame, w_target, h_target):
     return img
 
 async def handle_video(track, pc):
-    global vcam, latest_video_frame
+    global vcam
     loop = asyncio.get_running_loop()
 
     while pc.connectionState not in ["failed", "closed"]:
         try:
             frame = await track.recv()
             img = await loop.run_in_executor(executor, process_frame, frame, VCAM_WIDTH, VCAM_HEIGHT)
-            latest_video_frame = img
             async with vcam_lock:
                 if vcam is not None: vcam.send(img)
         except Exception: break
@@ -460,10 +460,8 @@ async def handle_mic(track, pc):
             stream.stop_stream(); stream.close(); p.terminate()
 
 def find_v4l2_device():
-    # Scan for created v4l2loopback minor nodes
     devices = sorted(glob.glob('/dev/video*'))
-    if '/dev/video10' in devices:
-        return '/dev/video10'
+    if '/dev/video10' in devices: return '/dev/video10'
     for d in devices:
         if d != '/dev/video0': return d
     return '/dev/video0' if devices else '/dev/video10'
@@ -503,23 +501,27 @@ app.router.add_get("/api/files/{filename}", download_file)
 app.router.add_post("/offer", offer)
 
 if __name__ == "__main__":
-    try: pyperclip.copy(DIRECT_LOCAL_DASHBOARD)
+    local_dashboard = f"https://{PRIMARY_IP}:8443/"
+    phone_url = f"https://{PRIMARY_IP}:8443/phone.html"
+
+    try: pyperclip.copy(local_dashboard)
     except Exception: pass
 
     qr = qrcode.QRCode()
-    qr.add_data(DIRECT_PHONE_URL)
+    qr.add_data(phone_url)
     qr.make()
 
-    print("\n" + "═"*72)
-    print("      PHONE-TO-PC MASTER ECOSYSTEM (ZERO-FAILURE RELAY)")
-    print("═"*72)
-    print(f"\n👉 Desktop Master Dashboard:\n   {DIRECT_LOCAL_DASHBOARD}")
-    print(f"\n👉 Direct Phone Access (Scan with Phone):\n   {DIRECT_PHONE_URL}\n")
-    print("👉 Terminal QR Code:")
+    print("\n" + "═"*74)
+    print("      PHONE-TO-PC MASTER RELAY — ACTIVE INTERFACES")
+    print("═"*74)
+    for idx, ip in enumerate(ALL_IPS):
+        print(f" [{idx+1}] Interface IP: https://{ip}:8443/phone.html")
+    print(f"\n👉 Primary Phone URL:\n   {phone_url}\n")
+    print("👉 Terminal QR Code for Primary IP:")
     qr.print_ascii(invert=True)
-    print("═"*72 + "\n")
+    print("═"*74 + "\n")
 
-    try: webbrowser.open(DIRECT_LOCAL_DASHBOARD)
+    try: webbrowser.open(local_dashboard)
     except Exception: pass
 
     loop = asyncio.get_event_loop()

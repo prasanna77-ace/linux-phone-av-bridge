@@ -13,7 +13,6 @@ IS_WINDOWS = platform.system() == "Windows"
 if not IS_WINDOWS:
     os.environ.setdefault("DISPLAY", ":0")
 
-# Input Controller: Attempt kernel-level evdev (uinput) on Linux, fallback to pynput
 uinput_device = None
 if not IS_WINDOWS:
     try:
@@ -21,7 +20,12 @@ if not IS_WINDOWS:
         from evdev import UInput, ecodes as e
         cap = {
             e.EV_REL: [e.REL_X, e.REL_Y, e.REL_WHEEL],
-            e.EV_KEY: [e.BTN_LEFT, e.BTN_RIGHT, e.BTN_MIDDLE, e.KEY_PLAYPAUSE, e.KEY_NEXTSONG, e.KEY_PREVIOUSSONG, e.KEY_VOLUMEUP, e.KEY_VOLUMEDOWN, e.KEY_MUTE]
+            e.EV_KEY: [
+                e.BTN_LEFT, e.BTN_RIGHT, e.BTN_MIDDLE,
+                e.KEY_PLAYPAUSE, e.KEY_NEXTSONG, e.KEY_PREVIOUSSONG,
+                e.KEY_VOLUMEUP, e.KEY_VOLUMEDOWN, e.KEY_MUTE,
+                e.KEY_LEFTCTRL, e.KEY_LEFTALT, e.KEY_TAB, e.KEY_Z, e.KEY_C, e.KEY_V, e.KEY_LEFTMETA
+            ]
         }
         uinput_device = UInput(cap, name="PhoneBridge-Virtual-Mouse")
     except Exception:
@@ -204,6 +208,21 @@ def inject_mouse_click(btn_str):
         btn = Button.left if btn_str == "l" else (Button.right if btn_str == "r" else Button.middle)
         pynput_mouse.click(btn)
 
+def inject_hotkey(combo):
+    if pynput_keyboard:
+        if combo == "ctrl_c":
+            pynput_keyboard.press(Key.ctrl); pynput_keyboard.press('c'); pynput_keyboard.release('c'); pynput_keyboard.release(Key.ctrl)
+        elif combo == "ctrl_v":
+            pynput_keyboard.press(Key.ctrl); pynput_keyboard.press('v'); pynput_keyboard.release('v'); pynput_keyboard.release(Key.ctrl)
+        elif combo == "ctrl_z":
+            pynput_keyboard.press(Key.ctrl); pynput_keyboard.press('z'); pynput_keyboard.release('z'); pynput_keyboard.release(Key.ctrl)
+        elif combo == "alt_tab":
+            pynput_keyboard.press(Key.alt); pynput_keyboard.press(Key.tab); pynput_keyboard.release(Key.tab); pynput_keyboard.release(Key.alt)
+        elif combo == "super":
+            pynput_keyboard.press(Key.cmd); pynput_keyboard.release(Key.cmd)
+        elif combo == "term_kill":
+            pynput_keyboard.press(Key.ctrl); pynput_keyboard.press('c'); pynput_keyboard.release('c'); pynput_keyboard.release(Key.ctrl)
+
 async def websocket_input_handler(request):
     global mobile_telemetry
     ws = web.WebSocketResponse()
@@ -236,6 +255,9 @@ async def websocket_input_handler(request):
                     pynput_mouse.press(Button.left)
                 elif act == "drag_end" and pynput_mouse:
                     pynput_mouse.release(Button.left)
+
+                elif act == "hotkey":
+                    inject_hotkey(data.get("k"))
 
                 elif act == "t" and pynput_keyboard:
                     pynput_keyboard.type(data.get("txt", ""))
@@ -433,7 +455,7 @@ if __name__ == "__main__":
     qr.make()
 
     print("\n" + "═"*72)
-    print("      PHONE-TO-PC PRO ENGINE (KERNEL INPUT + HARDWARE MATRIX)")
+    print("      PHONE-TO-PC PRO SUITE (DSP AUDIO + PWA + HOTKEY DECK)")
     print("═"*72)
     print(f"\n👉 PC Dashboard URL:\n   {DASHBOARD_DIRECT_URL}\n")
     print("👉 Scan with Phone Camera:")

@@ -4,6 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Phone Remote Studio Pro</title>
+    <link rel="manifest" href="./manifest.json">
+    <meta name="theme-color" content="#0f172a">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
     <style>
@@ -16,7 +21,7 @@
 
     <audio id="remoteAudio" autoplay playsinline></audio>
 
-    <!-- Top Status & Hardware Header -->
+    <!-- Top Status Header -->
     <header class="p-3 bg-slate-900/90 backdrop-blur border-b border-slate-800 flex items-center justify-between z-10">
         <div class="flex items-center gap-2">
             <span id="dot" class="w-2.5 h-2.5 rounded-full bg-slate-500"></span>
@@ -31,29 +36,37 @@
         </div>
     </header>
 
-    <!-- Hardware Usage Bar -->
+    <!-- Hardware Usage & DSP Status Bar -->
     <div class="bg-slate-900/60 border-b border-slate-800/80 px-3 py-1.5 flex items-center justify-between text-[10px] font-bold z-10">
         <div class="flex items-center gap-2">
-            <span class="text-slate-500 uppercase">Hardware:</span>
             <span id="badge-cam" class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-400">CAM: OFF</span>
             <span id="badge-mic" class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-400">MIC: OFF</span>
-            <span id="badge-pc-audio" class="px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">PC SOUND: ON</span>
+            <span class="px-1.5 py-0.5 rounded bg-sky-500/10 text-sky-400 border border-sky-500/20">DSP: AEC+NS</span>
         </div>
         <button onclick="toggleOLEDDimmer()" class="text-sky-400 hover:text-sky-300">🌑 OLED Save</button>
     </div>
 
-    <!-- Main Touchpad & Hardware Controls -->
-    <main class="flex-1 flex flex-col p-3 space-y-3 relative">
+    <!-- Main Controller Surface -->
+    <main class="flex-1 flex flex-col p-3 space-y-2.5 relative">
         
-        <!-- Interactive Multi-Touch Surface -->
+        <!-- Precision Touchpad -->
         <div id="trackpad" class="flex-1 touch-surface rounded-3xl border border-slate-800 flex flex-col items-center justify-center text-slate-400 font-semibold text-xs active:border-sky-500/60 transition shadow-inner">
-            <div class="w-12 h-12 rounded-2xl bg-slate-800/70 flex items-center justify-center mb-2 text-sky-400 text-xl shadow">👆</div>
+            <div class="w-10 h-10 rounded-2xl bg-slate-800/70 flex items-center justify-center mb-1 text-sky-400 text-lg shadow">👆</div>
             <span class="tracking-wide text-slate-300">Precision Touchpad Active</span>
-            <span class="text-[10px] text-slate-500 font-normal mt-1">Tap: L-Click • 2-Finger: Scroll • Hold: Drag</span>
+            <span class="text-[10px] text-slate-500 font-normal mt-0.5">Tap: L-Click • 2-Finger: Scroll • Hold: Drag</span>
         </div>
 
-        <!-- Camera Optical Sliders (Zoom & Exposure) -->
-        <div class="bg-slate-900/60 p-2.5 rounded-2xl border border-slate-800 space-y-2">
+        <!-- Hotkey Productivity Deck -->
+        <div class="grid grid-cols-5 gap-1.5">
+            <button onclick="sendHotkey('ctrl_c')" class="bg-slate-900 active:bg-sky-500 active:text-slate-950 border border-slate-800 py-1.5 rounded-xl font-bold text-[10px] text-slate-300">Copy</button>
+            <button onclick="sendHotkey('ctrl_v')" class="bg-slate-900 active:bg-sky-500 active:text-slate-950 border border-slate-800 py-1.5 rounded-xl font-bold text-[10px] text-slate-300">Paste</button>
+            <button onclick="sendHotkey('ctrl_z')" class="bg-slate-900 active:bg-sky-500 active:text-slate-950 border border-slate-800 py-1.5 rounded-xl font-bold text-[10px] text-slate-300">Undo</button>
+            <button onclick="sendHotkey('alt_tab')" class="bg-slate-900 active:bg-sky-500 active:text-slate-950 border border-slate-800 py-1.5 rounded-xl font-bold text-[10px] text-slate-300">Alt+Tab</button>
+            <button onclick="sendHotkey('super')" class="bg-slate-900 active:bg-sky-500 active:text-slate-950 border border-slate-800 py-1.5 rounded-xl font-bold text-[10px] text-sky-400">Super</button>
+        </div>
+
+        <!-- Camera Sliders -->
+        <div class="bg-slate-900/60 p-2 rounded-2xl border border-slate-800 space-y-1.5">
             <div class="flex items-center justify-between text-[10px] font-bold text-slate-400">
                 <span>🔍 Zoom: <span id="zoom-val" class="text-sky-400">1.0x</span></span>
                 <input type="range" id="zoom-slider" min="1" max="5" step="0.1" value="1" oninput="applyCameraZoom(this.value)" class="w-2/3 accent-sky-400">
@@ -65,13 +78,13 @@
         </div>
 
         <!-- Mouse Buttons & Drag Lock -->
-        <div class="grid grid-cols-3 gap-2 h-12">
+        <div class="grid grid-cols-3 gap-2 h-11">
             <button id="btn-left" class="bg-slate-900 active:bg-sky-500 active:text-slate-950 border border-slate-800 rounded-2xl font-bold text-xs tracking-wider transition shadow-sm">LEFT</button>
             <button id="btn-drag" onclick="toggleDragLock()" class="bg-slate-900 border border-slate-800 rounded-2xl font-bold text-xs text-amber-400 transition shadow-sm">DRAG LOCK</button>
             <button id="btn-right" class="bg-slate-900 active:bg-sky-500 active:text-slate-950 border border-slate-800 rounded-2xl font-bold text-xs tracking-wider transition shadow-sm">RIGHT</button>
         </div>
 
-        <!-- AV Hardware Matrix -->
+        <!-- Hardware Matrix -->
         <div class="grid grid-cols-4 gap-2">
             <button onclick="toggleStream('video')" id="cam-btn" class="bg-slate-900 active:scale-95 border border-slate-800 py-2.5 rounded-2xl text-xs font-bold flex flex-col items-center gap-1 transition shadow-sm">
                 <span>📷</span><span>Cam</span>
@@ -87,7 +100,7 @@
             </button>
         </div>
 
-        <!-- OLED Blackout Overlay (Click to wake) -->
+        <!-- OLED Blackout Overlay -->
         <div id="oled-overlay" onclick="toggleOLEDDimmer()" class="hidden absolute inset-0 oled-blackout z-50 flex flex-col items-center justify-center text-slate-800 text-xs font-mono select-none">
             <span>[ OLED SAVER ACTIVE • TAP ANYWHERE TO WAKE ]</span>
         </div>
@@ -103,6 +116,11 @@
     </footer>
 
     <script>
+        // Register PWA Service Worker for standalone installation
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('./sw.js').catch(() => {});
+        }
+
         const urlParams = new URLSearchParams(window.location.search);
         let host = urlParams.get('host') || localStorage.getItem('phonebridge_host') || `${window.location.hostname}:8443`;
         localStorage.setItem('phonebridge_host', host);
@@ -201,9 +219,16 @@
 
         async function startAVStream() {
             try {
+                // DSP Pipeline: Native Echo Cancellation + Noise Suppression + Auto Gain
                 localStream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: currentFacingMode, width: { exact: 1280 }, height: { exact: 720 }, frameRate: { ideal: 30 } },
-                    audio: true
+                    video: { facingMode: currentFacingMode, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true,
+                        channelCount: 1,
+                        sampleRate: 48000
+                    }
                 });
 
                 pc = new RTCPeerConnection({ iceServers: [] });
@@ -234,6 +259,13 @@
                 await pc.setRemoteDescription(new RTCSessionDescription(answer));
             } catch (err) {
                 console.error("WebRTC AV Error:", err);
+            }
+        }
+
+        function sendHotkey(combo) {
+            if (navigator.vibrate) navigator.vibrate(15);
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ a: "hotkey", k: combo }));
             }
         }
 

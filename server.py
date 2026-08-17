@@ -1,7 +1,7 @@
 import ssl, asyncio, socket, subprocess, os, fractions, cv2, json, time, platform, webbrowser
 from concurrent.futures import ThreadPoolExecutor
 from aiohttp import web, WSMsgType
-from aiortc import RTCPeerConnection, RTCSessionDescription, RTCConfiguration, AudioStreamTrack
+from aiortc import RTCPeerConnection, RTCSessionDescription, RTCConfiguration, RTCIceServer, AudioStreamTrack
 import pyvirtualcam
 import numpy as np
 import av
@@ -13,7 +13,7 @@ IS_WINDOWS = platform.system() == "Windows"
 if not IS_WINDOWS:
     os.environ.setdefault("DISPLAY", ":0")
 
-# Kernel-level uinput acceleration for sub-millisecond input response
+# Kernel-level uinput acceleration
 uinput_device = None
 if not IS_WINDOWS:
     try:
@@ -59,24 +59,34 @@ VCAM_FPS = 30
 
 GITHUB_PAGES_BASE = "https://prasanna77-ace.github.io/linux-phone-av-bridge"
 
-def get_lan_ip():
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+def get_best_lan_ip():
+    """Detects active LAN IP across Wi-Fi, Ethernet, and USB Tethering."""
+    candidates = []
     try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(('1.1.1.1', 80))
-        ip = s.getsockname()[0]
-    except Exception:
-        try:
-            s.connect(('192.168.1.1', 80))
-            ip = s.getsockname()[0]
-        except Exception:
-            ip = '127.0.0.1'
-    finally:
+        candidates.append(s.getsockname()[0])
         s.close()
-    return ip
+    except Exception:
+        pass
 
-LAN_IP = get_lan_ip()
-DASHBOARD_DIRECT_URL = f"{GITHUB_PAGES_BASE}/?host={LAN_IP}:8443"
-PHONE_DIRECT_URL = f"{GITHUB_PAGES_BASE}/phone.html?host={LAN_IP}:8443"
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(('192.168.1.1', 80))
+        candidates.append(s.getsockname()[0])
+        s.close()
+    except Exception:
+        pass
+
+    for ip in candidates:
+        if not ip.startswith("127."):
+            return ip
+    return "127.0.0.1"
+
+LAN_IP = get_best_lan_ip()
+LOCAL_DIRECT_URL = f"https://{LAN_IP}:8443/phone.html"
+PAGES_DIRECT_URL = f"{GITHUB_PAGES_BASE}/phone.html?host={LAN_IP}:8443"
+DASHBOARD_URL = f"{GITHUB_PAGES_BASE}/?host={LAN_IP}:8443"
 
 def get_sys_clipboard():
     try: return pyperclip.paste()
@@ -173,6 +183,26 @@ class NonBlockingDesktopAudio(AudioStreamTrack):
         if self.p_instance:
             try: self.p_instance.terminate()
             except Exception: pass
+
+async def handle_index(request):
+    if os.path.exists("index.html"):
+        return web.FileResponse("index.html")
+    return web.Response(text="PhoneBridge Core Running")
+
+async def handle_phone_page(request):
+    if os.path.exists("phone.html"):
+        return web.FileResponse("phone.html")
+    return web.Response(text="PhoneBridge Controller Ready")
+
+async def handle_manifest(request):
+    if os.path.exists("manifest.json"):
+        return web.FileResponse("manifest.json")
+    return web.Response(status=404)
+
+async def handle_sw(request):
+    if os.path.exists("sw.js"):
+        return web.FileResponse("sw.js", headers={"Content-Type": "application/javascript"})
+    return web.Response(status=404)
 
 async def get_status(request):
     files = [{"name": f, "size": os.path.getsize(os.path.join(TRANSFER_DIR, f))} for f in os.listdir(TRANSFER_DIR) if os.path.isfile(os.path.join(TRANSFER_DIR, f))]
@@ -339,7 +369,9 @@ async def offer(request):
     offer = RTCSessionDescription(sdp=params["sdp"], type=params["type"])
     enable_pc_to_phone = params.get("enable_pc_to_phone", True)
 
-    pc = RTCPeerConnection(configuration=RTCConfiguration(iceServers=[]))
+    # Added Google STUN servers for reliable LAN traversal
+    ice_servers = [RTCIceServer(urls=["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"])]
+    pc = RTCPeerConnection(configuration=RTCConfiguration(iceServers=ice_servers))
     pcs.add(pc)
 
     audio_track = None
@@ -454,6 +486,10 @@ async def cors_middleware(request, handler):
 
 app = web.Application(client_max_size=1024**3 * 10, middlewares=[cors_middleware])
 app.router.add_route("OPTIONS", "/{tail:.*}", lambda r: web.Response())
+app.router.add_get("/", handle_index)
+app.router.add_get("/phone.html", handle_phone_page)
+app.router.add_get("/manifest.json", handle_manifest)
+app.router.add_get("/sw.js", handle_sw)
 app.router.add_get("/api/status", get_status)
 app.router.add_get("/ws/input", websocket_input_handler)
 app.router.add_post("/api/upload", upload_file)
@@ -462,22 +498,23 @@ app.router.add_get("/api/files/{filename}", download_file)
 app.router.add_post("/offer", offer)
 
 if __name__ == "__main__":
-    try: pyperclip.copy(DASHBOARD_DIRECT_URL)
+    try: pyperclip.copy(DASHBOARD_URL)
     except Exception: pass
 
     qr = qrcode.QRCode()
-    qr.add_data(PHONE_DIRECT_URL)
+    qr.add_data(LOCAL_DIRECT_URL)
     qr.make()
 
     print("\n" + "═"*72)
-    print("      PHONE-TO-PC PRO ENGINE (LIGHTWEIGHT MULTI-MODAL SUITE)")
+    print("      PHONE-TO-PC BRIDGE (STABILITY & ZERO-SSL-FRICTION)")
     print("═"*72)
-    print(f"\n👉 PC Dashboard URL:\n   {DASHBOARD_DIRECT_URL}\n")
+    print(f"\n👉 Direct PC Dashboard:\n   {DASHBOARD_URL}")
+    print(f"\n👉 Direct Phone Access (Accept Cert once on phone):\n   {LOCAL_DIRECT_URL}\n")
     print("👉 Scan with Phone Camera:")
     qr.print_ascii(invert=True)
     print("═"*72 + "\n")
 
-    try: webbrowser.open(DASHBOARD_DIRECT_URL)
+    try: webbrowser.open(DASHBOARD_URL)
     except Exception: pass
 
     loop = asyncio.get_event_loop()

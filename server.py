@@ -370,6 +370,7 @@ def init_virtual_camera():
 app = web.Application()
 app.router.add_get("/", lambda r: web.FileResponse("index.html") if os.path.exists("index.html") else web.Response(text="PhoneBridge Core Running"))
 app.router.add_get("/phone.html", lambda r: web.FileResponse("phone.html"))
+app.router.add_get("/manifest.json", lambda r: web.FileResponse("manifest.json") if os.path.exists("manifest.json") else web.Response(status=404))
 app.router.add_get("/api/status", lambda r: web.json_response({"status": "ready", "lan_ip": PRIMARY_IP, "all_ips": ALL_IPS, "telemetry": telemetry_state}))
 app.router.add_get("/api/files", list_files)
 app.router.add_get("/api/download/{filename}", download_file)
@@ -383,9 +384,10 @@ if __name__ == "__main__":
     phone_url = f"https://{PRIMARY_IP}:8443/phone.html"
     
     print("\n" + "═"*65)
-    print("   ⚡ PHONEBRIDGE (SCROLL & AV FIXED)")
+    print("   ⚡ PHONEBRIDGE (AV • INPUT • FILE VAULT)")
     print("═"*65)
-    print(f"👉 Mobile URL: {phone_url}\n")
+    print(f"👉 Mobile URL: {phone_url}")
+    print(f"👉 PC Hub:    https://{PRIMARY_IP}:8443/\n")
     
     qr = qrcode.QRCode()
     qr.add_data(phone_url)

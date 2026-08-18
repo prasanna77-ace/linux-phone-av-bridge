@@ -1,6 +1,19 @@
+# Python & Virtual Environments
 venv/
 __pycache__/
 *.pyc
-*.pem
-*.key
-*.crt
+*.pyo
+
+# Local SSL Certificates & Keys (Sensitive)
+cert.pem
+key.pem
+
+# Transferred & Temporary Files
+PhoneBridge_Transfers/
+*.tmp
+*.bin
+
+# System & IDE Artifacts
+.DS_Store
+.vscode/
+.idea/

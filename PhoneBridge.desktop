@@ -1,8 +1,0 @@
-[Desktop Entry]
-Name=PhoneBridge Studio
-Comment=Zero-Latency Phone-to-PC AV & Input Relay
-Exec=/home/prasanna/linux_phone_bridge/linux-phone-av-bridge/start.sh
-Icon=camera-web
-Terminal=true
-Type=Application
-Categories=AudioVideo;Utility;

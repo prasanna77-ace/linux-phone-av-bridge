@@ -6,294 +6,192 @@
     <title>PhoneBridge Master Console</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
     <style>
         body { font-family: 'Plus Jakarta Sans', sans-serif; }
-        .glass { background: rgba(15, 23, 42, 0.88); backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.08); }
-        .glow { box-shadow: 0 0 50px -10px rgba(56, 189, 248, 0.2); }
-        .wave-bar { animation: pulseWave 1.2s infinite ease-in-out; }
-        @keyframes pulseWave { 0%, 100% { height: 4px; } 50% { height: 16px; } }
+        .glass-card { background: rgba(15, 23, 42, 0.8); backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.08); }
     </style>
 </head>
-<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col justify-between p-4 selection:bg-sky-500 selection:text-slate-950">
+<body class="bg-gray-950 text-slate-100 min-h-screen flex flex-col justify-between p-4">
 
-    <!-- Master Header Console -->
-    <header class="w-full max-w-6xl mx-auto flex items-center justify-between py-3 border-b border-slate-900 pb-3">
+    <!-- Master Header -->
+    <header class="w-full max-w-6xl mx-auto flex items-center justify-between py-3 border-b border-white/5 pb-3">
         <div class="flex items-center gap-3">
-            <div class="w-10 h-10 rounded-2xl bg-gradient-to-tr from-sky-500 via-indigo-500 to-cyan-400 flex items-center justify-center font-black text-slate-950 shadow-lg shadow-sky-500/20">⚡</div>
+            <div class="w-10 h-10 rounded-2xl bg-cyan-500 flex items-center justify-center font-black text-slate-950 text-lg shadow-lg shadow-cyan-500/20">⚡</div>
             <div>
-                <div class="flex items-center gap-2">
-                    <h1 class="text-lg font-bold text-slate-100 leading-tight">PhoneBridge Master</h1>
-                    <span id="active-mode-badge" class="text-[9px] font-extrabold px-2 py-0.5 rounded-full bg-sky-500/10 text-sky-400 border border-sky-500/20">SYSTEM MASTER</span>
-                </div>
-                <p class="text-xs text-slate-400">Zero-Latency AV & Kernel Input Ecosystem</p>
+                <h1 class="text-base font-extrabold text-white">PhoneBridge Master Dashboard</h1>
+                <p class="text-xs text-slate-400">Live 3-in-1 Control Hub (AV • Input • File Drops)</p>
             </div>
         </div>
-
-        <div class="flex items-center gap-3">
-            <div id="conn-badge" class="flex items-center gap-2 px-3 py-1 rounded-full bg-slate-900 border border-slate-800 text-xs font-semibold text-amber-400">
-                <span id="conn-dot" class="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
-                <span id="conn-text">Checking Engine...</span>
-            </div>
-            <button id="main-conn-btn" onclick="toggleEngineConnection()" class="px-4 py-1.5 rounded-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs shadow transition active:scale-95">
-                Connect
-            </button>
+        <div class="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900 border border-white/10 text-xs font-semibold">
+            <span id="conn-dot" class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span id="conn-text" class="text-emerald-400">Engine Running</span>
         </div>
     </header>
 
-    <!-- Master Workspace Dashboard -->
+    <!-- Main Grid Dashboard -->
     <main class="w-full max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-12 gap-5 my-auto">
         
-        <!-- Left Side: Pairing, Live Audio & Device Matrix -->
-        <div class="md:col-span-5 glass rounded-3xl p-5 glow flex flex-col justify-between space-y-4">
+        <!-- Left: Quick Pairing QR -->
+        <div class="md:col-span-4 glass-card rounded-3xl p-5 flex flex-col justify-between space-y-4">
             <div>
-                <div class="flex items-center justify-between mb-2">
-                    <span class="text-xs font-extrabold uppercase tracking-wider text-slate-400">Phone Pairing</span>
-                    <span id="device-chip" class="text-[10px] text-slate-400 font-bold bg-slate-900 px-2 py-0.5 rounded-full border border-slate-800">SCAN TO LINK</span>
-                </div>
-                <div class="flex flex-col items-center justify-center p-3.5 bg-slate-900/90 rounded-2xl border border-slate-800/90 shadow-inner">
+                <span class="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-2">Android QR Connect</span>
+                <div class="flex flex-col items-center justify-center p-4 bg-slate-900 rounded-2xl border border-white/5 shadow-inner">
                     <div id="qrcode" class="p-2 bg-white rounded-xl shadow"></div>
-                    <span id="host-label" class="text-[11px] font-mono text-slate-400 mt-2">Loading target host...</span>
+                    <span id="host-url-label" class="text-[11px] font-mono text-cyan-400 font-bold mt-3">Loading IP...</span>
                 </div>
             </div>
-
-            <!-- Real-Time Hardware Telemetry -->
-            <div class="space-y-1.5">
-                <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Hardware Telemetry</span>
-                <div class="grid grid-cols-2 gap-2 text-xs">
-                    <div class="p-2.5 bg-slate-900/80 rounded-xl border border-slate-800 flex items-center justify-between">
-                        <span class="text-slate-400">📷 Camera:</span>
-                        <span id="hw-cam" class="font-bold text-slate-500">OFF</span>
-                    </div>
-                    <div class="p-2.5 bg-slate-900/80 rounded-xl border border-slate-800 flex items-center justify-between">
-                        <span class="text-slate-400">🎙️ Mic:</span>
-                        <span id="hw-mic" class="font-bold text-slate-500">OFF</span>
-                    </div>
-                    <div class="p-2.5 bg-slate-900/80 rounded-xl border border-slate-800 flex items-center justify-between">
-                        <span class="text-slate-400">🔊 PC Sound:</span>
-                        <span id="hw-speaker" class="font-bold text-emerald-400">ROUTED</span>
-                    </div>
-                    <div class="p-2.5 bg-slate-900/80 rounded-xl border border-slate-800 flex items-center justify-between">
-                        <span class="text-slate-400">🔋 Battery:</span>
-                        <span id="battery-level" class="font-bold text-sky-400">100%</span>
-                    </div>
-                </div>
-            </div>
-
-            <!-- SSL Helper Link -->
-            <div id="ssl-box" class="p-3 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between">
-                <div class="text-xs text-amber-300">
-                    <span class="font-bold">First-Time SSL Pairing?</span>
-                    <p class="text-[10px] text-amber-400/80">Allow the certificate on your PC.</p>
-                </div>
-                <a id="certLink" href="#" target="_blank" class="px-3 py-1.5 bg-amber-500 text-slate-950 text-xs font-bold rounded-xl hover:bg-amber-400 transition">Allow SSL ↗</a>
+            <div class="p-3 bg-slate-900 rounded-2xl border border-white/5 flex items-center justify-between text-xs">
+                <span class="text-slate-400">Phone Battery:</span>
+                <span id="batt-val" class="font-bold text-emerald-400 font-mono">100% 🔋</span>
             </div>
         </div>
 
-        <!-- Right Side: Master Control Grid -->
-        <div class="md:col-span-7 glass rounded-3xl p-5 glow flex flex-col justify-between space-y-4">
+        <!-- Center: Real-Time Hardware Status Checkers -->
+        <div class="md:col-span-8 glass-card rounded-3xl p-5 flex flex-col justify-between space-y-4">
             <div>
-                <div class="flex items-center justify-between mb-3">
-                    <span class="text-xs font-extrabold uppercase tracking-wider text-slate-400">Master Control Matrix</span>
-                    <span class="text-[11px] text-emerald-400 font-mono">Kernel uinput active</span>
-                </div>
+                <span class="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-3">Live Hardware Status Monitor</span>
+                <div class="grid grid-cols-3 gap-3">
+                    
+                    <!-- 1. Cam & Mic -->
+                    <div class="p-4 bg-slate-900/80 border border-white/5 rounded-2xl flex flex-col gap-2">
+                        <div class="flex items-center justify-between">
+                            <span class="text-xs font-bold text-slate-300">📷 Camera</span>
+                            <span id="hw-cam" class="w-2.5 h-2.5 rounded-full bg-slate-600"></span>
+                        </div>
+                        <div class="flex items-center justify-between">
+                            <span class="text-xs font-bold text-slate-300">🎙️ Microphone</span>
+                            <span id="hw-mic" class="w-2.5 h-2.5 rounded-full bg-slate-600"></span>
+                        </div>
+                        <div class="flex items-center justify-between">
+                            <span class="text-xs font-bold text-slate-300">🔊 PC Audio</span>
+                            <span id="hw-audio" class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
+                        </div>
+                    </div>
 
-                <!-- Hardware Action Buttons -->
-                <div class="grid grid-cols-3 gap-2.5">
-                    <button onclick="sendAction('toggle_cam')" class="bg-slate-900/90 hover:bg-slate-800 border border-slate-800 p-3.5 rounded-2xl flex flex-col items-center justify-center gap-1 transition active:scale-95">
-                        <span class="text-xl">📷</span>
-                        <span class="text-xs font-bold text-slate-200">Toggle Cam</span>
-                    </button>
-                    <button onclick="sendAction('flip_cam')" class="bg-slate-900/90 hover:bg-slate-800 border border-slate-800 p-3.5 rounded-2xl flex flex-col items-center justify-center gap-1 transition active:scale-95">
-                        <span class="text-xl">🔄</span>
-                        <span class="text-xs font-bold text-slate-200">Flip Lens</span>
-                    </button>
-                    <button onclick="sendAction('toggle_torch')" class="bg-slate-900/90 hover:bg-slate-800 border border-slate-800 p-3.5 rounded-2xl flex flex-col items-center justify-center gap-1 transition active:scale-95">
-                        <span class="text-xl">🔦</span>
-                        <span class="text-xs font-bold text-slate-200">Flashlight</span>
-                    </button>
-                </div>
+                    <!-- 2. Mouse & Keyboard Input -->
+                    <div class="p-4 bg-slate-900/80 border border-white/5 rounded-2xl flex flex-col gap-2">
+                        <div class="flex items-center justify-between">
+                            <span class="text-xs font-bold text-slate-300">🖱️ Mouse Touchpad</span>
+                            <span id="hw-mouse" class="text-[10px] font-mono font-bold text-emerald-400">ACTIVE</span>
+                        </div>
+                        <div class="flex items-center justify-between">
+                            <span class="text-xs font-bold text-slate-300">⌨️ Keyboard Relay</span>
+                            <span id="hw-kb" class="text-[10px] font-mono font-bold text-emerald-400">ACTIVE</span>
+                        </div>
+                        <div class="flex items-center justify-between">
+                            <span class="text-xs font-bold text-slate-300">Recording Source</span>
+                            <span class="text-[10px] font-mono font-bold text-cyan-400">PhoneMic</span>
+                        </div>
+                    </div>
 
-                <!-- Desktop Media Deck -->
-                <div class="mt-3 bg-slate-900/50 p-2.5 rounded-2xl border border-slate-800 flex items-center justify-between">
-                    <span class="text-xs font-bold text-slate-400 ml-1">Desktop Media:</span>
-                    <div class="flex gap-1.5">
-                        <button onclick="sendMacro('prev')" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 rounded-xl text-xs font-bold">⏮</button>
-                        <button onclick="sendMacro('play_pause')" class="px-3 py-1 bg-sky-500 text-slate-950 font-black hover:bg-sky-400 rounded-xl text-xs">⏯</button>
-                        <button onclick="sendMacro('next')" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 rounded-xl text-xs font-bold">⏭</button>
-                        <button onclick="sendMacro('vol_down')" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 rounded-xl text-xs font-bold">🔉</button>
-                        <button onclick="sendMacro('vol_up')" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 rounded-xl text-xs font-bold">🔊</button>
+                    <!-- 3. File Transfer Vault -->
+                    <div class="p-4 bg-slate-900/80 border border-white/5 rounded-2xl flex flex-col justify-between">
+                        <div>
+                            <span class="text-xs font-bold text-slate-300 block">📁 File Vault</span>
+                            <span id="file-count" class="text-[10px] text-slate-400 block mt-1">0 files ready</span>
+                        </div>
+                        <span class="text-[10px] text-cyan-400 font-bold font-mono">~/Downloads/PhoneBridge_Transfers</span>
                     </div>
                 </div>
             </div>
 
-            <!-- Direct Text Injection -->
-            <div class="bg-slate-900/80 p-3.5 rounded-2xl border border-slate-800 space-y-2">
-                <label class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider">Direct Text Streamer</label>
+            <!-- Direct PC Upload & File List with Delete Action -->
+            <div class="space-y-2">
+                <span class="text-xs font-bold text-slate-400 uppercase tracking-wider block">File Transfer & Management</span>
                 <div class="flex gap-2">
-                    <input id="remoteText" type="text" placeholder="Type text to inject into focused desktop window..." class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none focus:border-sky-500">
-                    <button onclick="sendText()" class="bg-sky-500 hover:bg-sky-400 text-slate-950 px-4 py-2 rounded-xl text-xs font-bold transition">Send</button>
+                    <input type="file" id="pc-file-upload" onchange="uploadPCFile(this.files[0])" class="text-xs file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:bg-cyan-500 file:text-slate-950 file:font-bold">
+                    <span id="upload-stat" class="text-xs font-bold text-cyan-400 my-auto"></span>
                 </div>
-            </div>
-
-            <!-- Target Host Settings -->
-            <div class="border-t border-slate-800 pt-2 flex items-center justify-between text-xs text-slate-400">
-                <span>Engine Host: <b id="current-host" class="text-sky-400 font-mono">--</b></span>
-                <button onclick="toggleManual()" class="text-sky-400 hover:underline">Change Host</button>
-            </div>
-            <div id="manual-ip-row" class="hidden flex gap-2">
-                <input id="serverIp" type="text" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-1.5 text-xs font-mono text-white focus:outline-none focus:border-sky-500">
-                <button onclick="saveManualHost()" class="bg-sky-500 hover:bg-sky-400 text-slate-950 px-4 py-1.5 rounded-xl text-xs font-bold">Save</button>
+                <div id="file-list-box" class="max-h-36 overflow-y-auto space-y-1.5 pr-1 text-xs"></div>
             </div>
         </div>
     </main>
 
-    <!-- Clean Monetization Placement -->
-    <footer class="w-full max-w-6xl mx-auto my-2">
-        <div class="bg-slate-900/40 border border-slate-800/60 rounded-2xl p-2.5 text-center">
-            <span class="text-[9px] uppercase tracking-widest text-slate-500 block mb-1">Sponsored Advertisement</span>
-            <div class="min-h-[80px] flex items-center justify-center bg-slate-950/60 rounded-xl border border-dashed border-slate-800 text-xs text-slate-600">
-                Clean Non-Intrusive Banner Placement (728x90)
-            </div>
-        </div>
+    <footer class="w-full max-w-6xl mx-auto my-2 text-center text-xs text-slate-600">
+        PhoneBridge Core Master Dashboard • Port 8443
     </footer>
 
     <script>
-        let ws = null, qr = null, isConnected = false;
-
-        function getHost() {
-            const urlParams = new URLSearchParams(window.location.search);
-            return urlParams.get('host') || `${window.location.hostname}:8443` || localStorage.getItem('phonebridge_host') || '127.0.0.1:8443';
-        }
+        const host = `${window.location.hostname}:8443`;
 
         function updateQR(url) {
-            const qrContainer = document.getElementById("qrcode");
-            qrContainer.innerHTML = "";
-            qr = new QRCode(qrContainer, {
-                text: url,
-                width: 130,
-                height: 130,
-                colorDark: "#020617",
-                colorLight: "#ffffff",
-                correctLevel: QRCode.CorrectLevel.M
-            });
+            const el = document.getElementById("qrcode");
+            el.innerHTML = "";
+            new QRCode(el, { text: url, width: 125, height: 125, colorDark: "#020617", colorLight: "#ffffff" });
+            document.getElementById('host-url-label').innerText = url;
         }
 
-        function connectEngine() {
-            const host = getHost();
-            document.getElementById('serverIp').value = host;
-            document.getElementById('current-host').innerText = host;
-            document.getElementById('host-label').innerText = `Target: ${host}`;
-            localStorage.setItem('phonebridge_host', host);
-
-            const phoneUrl = `https://${host}/phone.html`;
-            updateQR(phoneUrl);
-
-            document.getElementById('certLink').href = `https://${host}/api/status`;
-
-            if (ws) ws.close();
-            ws = new WebSocket(`wss://${host}/ws/input`);
-
-            ws.onopen = () => {
-                isConnected = true;
-                setUIConnected(true);
-            };
-
-            ws.onmessage = (e) => {
-                try {
-                    const data = JSON.parse(e.data);
-                    if (data.a === "telemetry_update") {
-                        document.getElementById('battery-level').innerText = `🔋 ${data.battery}%`;
-                        document.getElementById('device-chip').innerText = data.device || 'PHONE CONNECTED';
-                        document.getElementById('device-chip').className = "text-[10px] text-emerald-400 font-bold bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20";
-                        if (data.mode) document.getElementById('active-mode-badge').innerText = data.mode.toUpperCase();
-                        if (data.cam_active !== undefined) {
-                            document.getElementById('hw-cam').innerText = data.cam_active ? 'ON' : 'OFF';
-                            document.getElementById('hw-cam').className = data.cam_active ? 'font-bold text-emerald-400' : 'font-bold text-slate-500';
-                        }
-                        if (data.mic_active !== undefined) {
-                            document.getElementById('hw-mic').innerText = data.mic_active ? 'ON' : 'OFF';
-                            document.getElementById('hw-mic').className = data.mic_active ? 'font-bold text-emerald-400' : 'font-bold text-slate-500';
-                        }
-                    }
-                } catch(err) {}
-            };
-
-            ws.onerror = () => { isConnected = false; setUIConnected(false, true); };
-            ws.onclose = () => { isConnected = false; setUIConnected(false); };
+        async function fetchStatus() {
+            try {
+                const res = await fetch('/api/status');
+                const data = await res.json();
+                updateQR(`https://${data.lan_ip}:8443/phone.html`);
+                
+                if (data.telemetry) {
+                    document.getElementById('hw-cam').className = data.telemetry.cam_active ? "w-2.5 h-2.5 rounded-full bg-emerald-400" : "w-2.5 h-2.5 rounded-full bg-slate-600";
+                    document.getElementById('hw-mic').className = data.telemetry.mic_active ? "w-2.5 h-2.5 rounded-full bg-emerald-400" : "w-2.5 h-2.5 rounded-full bg-slate-600";
+                    document.getElementById('batt-val').innerText = `${data.telemetry.battery || 100}% 🔋`;
+                }
+            } catch(e) {}
         }
 
-        function disconnectEngine() {
-            if (ws) { ws.close(); ws = null; }
-            isConnected = false;
-            setUIConnected(false);
+        async function fetchFiles() {
+            try {
+                const res = await fetch('/api/files');
+                const data = await res.json();
+                document.getElementById('file-count').innerText = `${data.count} file(s) available`;
+                const box = document.getElementById('file-list-box');
+                box.innerHTML = '';
+                if (data.files.length === 0) {
+                    box.innerHTML = '<div class="text-slate-500 italic p-2">No files currently in transfers folder.</div>';
+                    return;
+                }
+                data.files.forEach(f => {
+                    const row = document.createElement('div');
+                    row.className = "p-2 bg-slate-900 rounded-xl flex items-center justify-between border border-white/5";
+                    row.innerHTML = `
+                        <div class="flex items-center gap-2 truncate max-w-xs">
+                            <span class="text-sm">📄</span>
+                            <span class="font-bold text-slate-200 truncate">${f.name}</span>
+                            <span class="text-[10px] text-slate-500">(${Math.round(f.size/1024)} KB)</span>
+                        </div>
+                        <div class="flex items-center gap-1.5">
+                            <a href="${f.url}" download class="px-2.5 py-1 bg-cyan-500 text-slate-950 font-bold rounded-lg text-[10px]">Download</a>
+                            <button onclick="deleteFile('${f.name}')" class="px-2 py-1 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 font-bold rounded-lg text-[10px]">Delete ✕</button>
+                        </div>
+                    `;
+                    box.appendChild(row);
+                });
+            } catch(e) {}
         }
 
-        function toggleEngineConnection() {
-            if (isConnected) disconnectEngine();
-            else connectEngine();
+        async function deleteFile(filename) {
+            if (!confirm(`Delete ${filename}?`)) return;
+            try {
+                await fetch(`/api/files/${encodeURIComponent(filename)}`, { method: 'DELETE' });
+                fetchFiles();
+            } catch(e) { alert("Delete failed"); }
         }
 
-        function setUIConnected(connected, sslError = false) {
-            const badge = document.getElementById('conn-badge');
-            const dot = document.getElementById('conn-dot');
-            const text = document.getElementById('conn-text');
-            const btn = document.getElementById('main-conn-btn');
-            const sslBox = document.getElementById('ssl-box');
-
-            if (connected) {
-                badge.className = "flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-xs font-bold text-emerald-400";
-                dot.className = "w-2 h-2 rounded-full bg-emerald-400";
-                text.innerText = "Engine Connected";
-                btn.innerText = "Disconnect";
-                btn.className = "px-4 py-1.5 rounded-full bg-rose-500 hover:bg-rose-400 text-white font-bold text-xs shadow transition active:scale-95";
-                sslBox.classList.add('hidden');
-            } else if (sslError) {
-                badge.className = "flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-xs font-bold text-amber-400";
-                dot.className = "w-2 h-2 rounded-full bg-amber-400 animate-pulse";
-                text.innerText = "SSL Pair Needed";
-                btn.innerText = "Retry";
-                btn.className = "px-4 py-1.5 rounded-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow transition active:scale-95";
-                sslBox.classList.remove('hidden');
-            } else {
-                badge.className = "flex items-center gap-2 px-3 py-1 rounded-full bg-slate-900 border border-slate-800 text-xs font-semibold text-slate-400";
-                dot.className = "w-2 h-2 rounded-full bg-slate-500";
-                text.innerText = "Disconnected";
-                btn.innerText = "Connect";
-                btn.className = "px-4 py-1.5 rounded-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs shadow transition active:scale-95";
-            }
+        async function uploadPCFile(file) {
+            if (!file) return;
+            const stat = document.getElementById('upload-stat');
+            stat.innerText = `Uploading ${file.name}...`;
+            const formData = new FormData();
+            formData.append('file', file);
+            await fetch('/api/upload', { method: 'POST', body: formData });
+            stat.innerText = `✓ Stored in ~/Downloads`;
+            setTimeout(() => stat.innerText = '', 3000);
+            fetchFiles();
         }
 
-        function sendAction(cmd) {
-            if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ a: "phone_control", cmd: cmd }));
-            else alert("Connect to desktop engine first.");
-        }
-
-        function sendMacro(cmd) {
-            if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ a: "macro", cmd: cmd }));
-        }
-
-        function sendText() {
-            const input = document.getElementById('remoteText');
-            if (input.value && ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ a: "t", txt: input.value }));
-                input.value = "";
-            }
-        }
-
-        function toggleManual() {
-            document.getElementById('manual-ip-row').classList.toggle('hidden');
-        }
-
-        function saveManualHost() {
-            const h = document.getElementById('serverIp').value.trim();
-            if (h) {
-                localStorage.setItem('phonebridge_host', h);
-                window.location.search = `?host=${encodeURIComponent(h)}`;
-            }
-        }
-
-        window.onload = connectEngine;
+        window.onload = () => {
+            fetchStatus();
+            fetchFiles();
+            setInterval(fetchStatus, 3000);
+            setInterval(fetchFiles, 4000);
+        };
     </script>
 </body>
 </html>

@@ -384,10 +384,9 @@ if __name__ == "__main__":
     phone_url = f"https://{PRIMARY_IP}:8443/phone.html"
     
     print("\n" + "═"*65)
-    print("   ⚡ PHONEBRIDGE (AV • INPUT • FILE VAULT)")
+    print("   ⚡ PHONEBRIDGE (SEAMLESS AUTO-LAUNCH ACTIVE)")
     print("═"*65)
-    print(f"👉 Mobile URL: {phone_url}")
-    print(f"👉 PC Hub:    https://{PRIMARY_IP}:8443/\n")
+    print(f"👉 Mobile URL: {phone_url}\n")
     
     qr = qrcode.QRCode()
     qr.add_data(phone_url)

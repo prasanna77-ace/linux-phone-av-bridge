@@ -36,6 +36,12 @@
         <button onclick="saveHost()" class="px-3 py-1.5 rounded-xl bg-emerald-500 text-slate-950 font-bold text-xs whitespace-nowrap">Save</button>
     </div>
 
+    <!-- Audio Autoplay Banner -->
+    <div id="audio-unlock-banner" onclick="unlockAudio()" class="mx-2.5 mt-2 p-2 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between text-xs text-amber-300 cursor-pointer">
+        <span class="font-bold">🔊 Tap to Enable Studio PC Audio</span>
+        <span class="px-2 py-0.5 bg-amber-500 text-slate-950 rounded-lg text-[10px] font-black">UNMUTE</span>
+    </div>
+
     <main class="flex-1 flex flex-col p-2.5 space-y-2 relative overflow-y-auto">
         
         <!-- MODULE 1: STUDIO AV -->
@@ -55,16 +61,16 @@
                 </div>
 
                 <div class="absolute top-3 right-3 bg-black/60 backdrop-blur px-2.5 py-1 rounded-full border border-white/10 text-[10px] font-bold font-mono text-cyan-400">
-                    <span id="res-badge">720p HD</span>
+                    <span id="res-badge">720p @ 60fps</span>
                 </div>
             </div>
 
             <div class="glass-card p-2.5 rounded-2xl flex items-center justify-between text-xs">
                 <span class="text-slate-400 font-bold text-[11px]">Stream Quality:</span>
                 <select id="res-select" onchange="changeResolution(this.value)" class="bg-slate-900 border border-slate-700 text-cyan-400 font-bold rounded-xl px-2.5 py-1 text-xs focus:outline-none">
-                    <option value="1080">1080p FHD (1920x1080)</option>
-                    <option value="720" selected>720p HD (1280x720)</option>
-                    <option value="480">480p SD (854x480)</option>
+                    <option value="1080">1080p FHD @ 60fps (8 Mbps)</option>
+                    <option value="720" selected>720p HD @ 60fps (6 Mbps)</option>
+                    <option value="480">480p SD @ 60fps (3 Mbps)</option>
                 </select>
             </div>
 
@@ -75,7 +81,7 @@
             </div>
         </section>
 
-        <!-- MODULE 2: MOUSE & KEYBOARD WITH TWO-FINGER SCROLL -->
+        <!-- MODULE 2: MOUSE & KEYBOARD -->
         <section id="view-input" class="hidden flex-1 flex flex-col space-y-2">
             <div id="touchpad-area" class="flex-1 touch-pad rounded-3xl glass-card flex flex-col items-center justify-center text-slate-400 text-xs touch-none min-h-[180px]">
                 <span class="font-bold text-slate-200 text-sm mb-1">120Hz Precision Touchpad</span>
@@ -145,14 +151,19 @@
         let userDisconnect = false, reconnectDelay = 1000;
 
         const resMap = {
-            "1080": { w: 1920, h: 1080, label: "1080p FHD" },
-            "720":  { w: 1280, h: 720,  label: "720p HD" },
-            "480":  { w: 854,  h: 480,  label: "480p SD" }
+            "1080": { w: 1920, h: 1080, label: "1080p @ 60fps" },
+            "720":  { w: 1280, h: 720,  label: "720p @ 60fps" },
+            "480":  { w: 854,  h: 480,  label: "480p @ 60fps" }
         };
 
         function unlockAudio() {
             const el = document.getElementById("remoteAudio");
-            if (el) el.play().catch(() => {});
+            if (el) {
+                el.play().then(() => {
+                    const banner = document.getElementById("audio-unlock-banner");
+                    if (banner) banner.classList.add("hidden");
+                }).catch(() => {});
+            }
         }
 
         function toggleConfig() {
@@ -197,17 +208,26 @@
             document.getElementById('res-badge').innerText = r.label;
 
             try {
+                // 60 FPS Capture & Flat High-Fidelity Audio Constraints
                 localStream = await navigator.mediaDevices.getUserMedia({
                     video: { 
                         facingMode: { ideal: facing }, 
                         width: { ideal: r.w }, 
                         height: { ideal: r.h }, 
-                        frameRate: { ideal: 30 } 
+                        frameRate: { ideal: 60, min: 30 } 
                     },
                     audio: { 
-                        echoCancellation: { ideal: true }, 
-                        noiseSuppression: { ideal: true }, 
-                        autoGainControl: { ideal: true } 
+                        echoCancellation: false,
+                        noiseSuppression: false,
+                        autoGainControl: false,
+                        googAutoGainControl: false,
+                        googAutoGainControl2: false,
+                        googEchoCancellation: false,
+                        googNoiseSuppression: false,
+                        googHighpassFilter: false,
+                        googTypingNoiseDetection: false,
+                        channelCount: 1,
+                        sampleRate: 48000
                     }
                 });
 
@@ -229,11 +249,14 @@
                     if (e.track.kind === "audio") {
                         const el = document.getElementById("remoteAudio");
                         el.srcObject = e.streams[0];
-                        el.play().catch(() => {});
+                        unlockAudio();
                     }
                 };
 
                 let offer = await pc.createOffer();
+                
+                // Uncap Mobile Video Send Bitrate to 8000 kbps (8 Mbps) in SDP
+                offer.sdp = offer.sdp.replace(/m=video ([0-9]+) [A-Z\/]+ [0-9 ]+/g, '$&\r\nb=AS:8000\r\nb=TIAS:8000000');
                 await pc.setLocalDescription(offer);
 
                 const res = await fetch(`https://${host}/offer`, {
@@ -263,7 +286,7 @@
 
                 try {
                     const newStream = await navigator.mediaDevices.getUserMedia({
-                        video: { facingMode: { ideal: facing }, width: { ideal: r.w }, height: { ideal: r.h } }
+                        video: { facingMode: { ideal: facing }, width: { ideal: r.w }, height: { ideal: r.h }, frameRate: { ideal: 60, min: 30 } }
                     });
                     const newTrack = newStream.getVideoTracks()[0];
                     localStream.removeTrack(oldVideo);
@@ -303,7 +326,7 @@
                 try {
                     const r = resMap[targetRes];
                     const newStream = await navigator.mediaDevices.getUserMedia({
-                        video: { facingMode: { ideal: facing }, width: { ideal: r.w }, height: { ideal: r.h } }
+                        video: { facingMode: { ideal: facing }, width: { ideal: r.w }, height: { ideal: r.h }, frameRate: { ideal: 60, min: 30 } }
                     });
                     const newTrack = newStream.getVideoTracks()[0];
                     localStream.removeTrack(oldVideo);
@@ -326,7 +349,7 @@
             const camOn = localStream ? localStream.getVideoTracks().some(t => t.enabled) : false;
             const micOn = localStream ? localStream.getAudioTracks().some(t => t.enabled) : false;
             const r = resMap[targetRes];
-            wsSend({ a: "telemetry", cam: camOn, mic: micOn, res: `${r.w}x${r.h}` });
+            wsSend({ a: "telemetry", cam: camOn, mic: micOn, res: `${r.w}x${r.h}@60` });
         }
 
         function initConnection() {
@@ -382,10 +405,10 @@
             }
         }
 
-        // --- MULTI-TOUCH 120HZ TOUCHPAD & 2-FINGER SCROLL ENGINE ---
+        // --- MULTI-TOUCH 120HZ TOUCHPAD & 2-FINGER SCROLL ---
         let last1X = 0, last1Y = 0;
         let last2Y = 0;
-        let touchMode = null; // 'single' or 'scroll'
+        let touchMode = null;
         let touchStartTime = 0;
         let scrollAccumulator = 0;
 
@@ -420,7 +443,6 @@
 
                 scrollAccumulator += deltaY;
 
-                // Threshold to convert pixel distance to natural discrete scroll ticks
                 if (Math.abs(scrollAccumulator) >= 12) {
                     const scrollTicks = scrollAccumulator > 0 ? 1 : -1;
                     wsSend({ a: "sc", dy: scrollTicks });

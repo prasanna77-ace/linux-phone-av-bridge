@@ -52,13 +52,13 @@ ws_clients = set()
 TRANSFER_DIR = os.path.expanduser("~/Downloads/PhoneBridge_Transfers")
 os.makedirs(TRANSFER_DIR, exist_ok=True)
 
-VCAM_WIDTH, VCAM_HEIGHT, VCAM_FPS = 1280, 720, 30
+VCAM_WIDTH, VCAM_HEIGHT, VCAM_FPS = 1280, 720, 60
 
 telemetry_state = {
     "cam_active": False,
     "mic_active": False,
     "pc_audio_active": False,
-    "resolution": "1280x720",
+    "resolution": "1280x720@60",
     "rtt": 0,
     "battery": 100
 }
@@ -96,6 +96,7 @@ def make_standby_frame(w=VCAM_WIDTH, h=VCAM_HEIGHT):
     img = np.zeros((h, w, 3), dtype=np.uint8)
     img[:] = (20, 30, 48)
     cv2.putText(img, "PhoneBridge Ready", (int(w*0.30), int(h*0.48)), cv2.FONT_HERSHEY_SIMPLEX, 1.1, (56, 189, 248), 2, cv2.LINE_AA)
+    cv2.putText(img, "60 FPS High-Fidelity Studio Active", (int(w*0.25), int(h*0.56)), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (148, 163, 184), 1, cv2.LINE_AA)
     return img
 
 class NonBlockingDesktopAudio(AudioStreamTrack):
@@ -110,9 +111,14 @@ class NonBlockingDesktopAudio(AudioStreamTrack):
     async def init_process(self):
         if not IS_WINDOWS:
             source = get_default_monitor_source()
-            cmd = ["parec", "--format=s16le", "--rate=48000", "--channels=2", "--raw", "--latency-msec=10", "-d", source]
+            cmd = ["parec", "--format=s16le", "--rate=48000", "--channels=2", "--raw", "--latency-msec=20", "-d", source]
             try:
-                self.proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
+                self.proc = await asyncio.create_subprocess_exec(
+                    *cmd,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.DEVNULL,
+                    limit=1024*1024
+                )
                 telemetry_state["pc_audio_active"] = True
             except Exception:
                 self.proc = None
@@ -215,7 +221,7 @@ async def websocket_input_handler(request):
                 elif act == "telemetry":
                     telemetry_state["cam_active"] = data.get("cam", False)
                     telemetry_state["mic_active"] = data.get("mic", False)
-                    telemetry_state["resolution"] = data.get("res", "1280x720")
+                    telemetry_state["resolution"] = data.get("res", "1280x720@60")
                     telemetry_state["battery"] = data.get("batt", 100)
     finally:
         ws_clients.discard(ws)
@@ -264,6 +270,20 @@ async def delete_file(request):
             return web.json_response({"status": "error", "message": str(e)}, status=500)
     return web.Response(status=404, text="File not found")
 
+def amplify_and_optimize_sdp(sdp_text):
+    """Uncaps WebRTC video bitrate to 8000kbps (8 Mbps) and audio to 160kbps."""
+    lines = sdp_text.splitlines()
+    new_lines = []
+    for line in lines:
+        new_lines.append(line)
+        if line.startswith("m=video"):
+            new_lines.append("b=AS:8000")
+            new_lines.append("b=TIAS:8000000")
+        elif line.startswith("a=rtpmap:") and "opus/48000" in line:
+            payload_type = line.split()[0].split(":")[1]
+            new_lines.append(f"a=fmtp:{payload_type} minptime=10;maxaveragebitrate=160000;stereo=0;sprop-stereo=0;cbr=1;useinbandfec=0")
+    return "\r\n".join(new_lines) + "\r\n"
+
 async def offer(request):
     params = await request.json()
     offer = RTCSessionDescription(sdp=params["sdp"], type=params["type"])
@@ -297,7 +317,12 @@ async def offer(request):
 
     await pc.setRemoteDescription(offer)
     answer = await pc.createAnswer()
+    
+    # Apply 8 Mbps video and 160 kbps studio audio optimization
+    optimized_sdp = amplify_and_optimize_sdp(answer.sdp)
+    answer = RTCSessionDescription(sdp=optimized_sdp, type=answer.type)
     await pc.setLocalDescription(answer)
+
     return web.json_response({"sdp": pc.localDescription.sdp, "type": pc.localDescription.type})
 
 def process_and_send_frame(frame, target_w, target_h):
@@ -309,7 +334,7 @@ def process_and_send_frame(frame, target_w, target_h):
         if src_w != target_w or src_h != target_h:
             scale = min(target_w / src_w, target_h / src_h)
             new_w, new_h = int(src_w * scale), int(src_h * scale)
-            resized = cv2.resize(src_img, (new_w, new_h), interpolation=cv2.INTER_AREA)
+            resized = cv2.resize(src_img, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
 
             canvas = np.zeros((target_h, target_w, 3), dtype=np.uint8)
             y_off = (target_h - new_h) // 2
@@ -340,15 +365,31 @@ async def handle_mic(track, pc):
     telemetry_state["mic_active"] = True
     resampler = av.AudioResampler(format="s16", layout="mono", rate=48000)
     if not IS_WINDOWS:
-        cmd = ["pacat", "--playback", "-d", "PhoneMicEngine", "--rate=48000", "--channels=1", "--format=s16le", "--raw", "--latency-msec=10"]
-        proc = await asyncio.create_subprocess_exec(*cmd, stdin=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
+        cmd = [
+            "pacat",
+            "--playback",
+            "-d", "PhoneMicEngine",
+            "--rate=48000",
+            "--channels=1",
+            "--format=s16le",
+            "--raw",
+            "--latency-msec=30",
+            "--process-time-msec=15"
+        ]
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdin=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL
+        )
         try:
             while pc.connectionState not in ["failed", "closed"]:
                 frame = await track.recv()
                 for resampled in resampler.resample(frame):
-                    proc.stdin.write(resampled.to_ndarray().tobytes())
-                    await proc.stdin.drain()
-        except Exception: pass
+                    pcm_bytes = resampled.to_ndarray().tobytes()
+                    if proc and proc.stdin:
+                        proc.stdin.write(pcm_bytes)
+        except Exception:
+            pass
         finally:
             if proc:
                 try: proc.terminate()
@@ -365,7 +406,7 @@ def init_virtual_camera():
         )
         vcam.send(make_standby_frame())
     except Exception as e:
-        print(f"[VirtualCam Init Notice] {e}")
+        print(f"[VirtualCam Notice] {e}")
 
 app = web.Application()
 app.router.add_get("/", lambda r: web.FileResponse("index.html") if os.path.exists("index.html") else web.Response(text="PhoneBridge Core Running"))
@@ -384,7 +425,7 @@ if __name__ == "__main__":
     phone_url = f"https://{PRIMARY_IP}:8443/phone.html"
     
     print("\n" + "═"*65)
-    print("   ⚡ PHONEBRIDGE (SEAMLESS AUTO-LAUNCH ACTIVE)")
+    print("   ⚡ PHONEBRIDGE (8 MBPS HD VIDEO & +3DB STUDIO AUDIO)")
     print("═"*65)
     print(f"👉 Mobile URL: {phone_url}\n")
     
